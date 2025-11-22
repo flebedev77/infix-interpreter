@@ -2,6 +2,7 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 #define PROMPT_SIZE 150
 
@@ -156,9 +157,6 @@ void inset_into_expression_tree(Token_t* l, Token_t* r, Token_t* root) {
   };
   expression_tree[tree_len-3].l = &expression_tree[tree_len-2];
   expression_tree[tree_len-3].r = &expression_tree[tree_len-1];
-  // if (tree_len != 3) {
-  //   expression_tree[tree_len-4].r = &expression_tree[tree_len-3];
-  // }
 }
 
 void tokens_to_expression_tree() {
@@ -202,6 +200,27 @@ void tokens_to_expression_tree() {
   }
 }
 
+double eval_subtree(struct BinTreeNode node) {
+  if (node.token.type == TOKEN_NUM) return node.token.value;
+  if (node.l == NULL || node.r == NULL) return 0.0;
+  double lvalue = eval_subtree(*node.l);
+  double rvalue = eval_subtree(*node.r);
+  switch (node.token.type) {
+    case TOKEN_SUB: return lvalue - rvalue;
+    case TOKEN_ADD: return lvalue + rvalue;
+    case TOKEN_MUL: return lvalue * rvalue;
+    case TOKEN_DIV: return lvalue / rvalue;
+    case TOKEN_POW: return pow(lvalue, rvalue);
+    default: return 0.0;
+  }
+
+  return 0.0;
+}
+
+double evaluate_expression_tree() {
+  return eval_subtree(expression_tree[expression_tree_root_node_index]);
+}
+
 void tokenise(char* str) {
   memset(tokens, 0, sizeof(Token_t) * PROMPT_SIZE);
   tokens_len = 0;
@@ -242,12 +261,19 @@ void tokenise(char* str) {
     }
 
     if (eot && current_token_type != TOKEN_NULL) {
+      // TODO Implement my own atof that expects a string with a size instead of null terminated
+      double value = 0.0; 
+      if (current_token_type == TOKEN_NUM) {
+        char buf[PROMPT_SIZE] = {0};
+        memcpy(buf, token_begin, token_len);
+        value = atof(buf);
+      }
       tokens[tokens_len++] = (Token_t) {
         .type = current_token_type,
-        .value = 0,
-        .str = token_begin,
-        .str_len = token_len,
-        .parsed = false
+          .value = value,
+          .str = token_begin,
+          .str_len = token_len,
+          .parsed = false
       };
       current_token_type = TOKEN_NULL;
       token_begin += token_len;
@@ -352,8 +378,11 @@ int main() {
     }
 
     tokens_to_expression_tree();
-    printf("%d\n", expression_tree_root_node_index);
-    print_tree(&expression_tree[expression_tree_root_node_index], 0);
+    printf("%0.2f\n", evaluate_expression_tree());
+    if (debug) {
+      printf("%d\n", expression_tree_root_node_index);
+      print_tree(&expression_tree[expression_tree_root_node_index], 0);
+    }
 
   }
 
