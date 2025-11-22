@@ -79,12 +79,12 @@ bool is_operator_token(enum TokenType type) {
 int get_operator_token_precedence(enum TokenType type) {
   switch (type) {
     case TOKEN_SUB: return 1;
-    case TOKEN_ADD: return 2;
-    case TOKEN_MUL: return 3;
-    case TOKEN_DIV: return 4;
-    case TOKEN_POW: return 5;
-    case TOKEN_LPAREN: return 6;
-    case TOKEN_RPAREN: return 6;
+    case TOKEN_ADD: return 1;
+    case TOKEN_MUL: return 2;
+    case TOKEN_DIV: return 2;
+    case TOKEN_POW: return 3;
+    case TOKEN_LPAREN: return 4;
+    case TOKEN_RPAREN: return 4;
     default: return -1;
   }
 }
@@ -111,12 +111,11 @@ typedef struct {
   double value;
   char* str;
   int str_len; // Has to be printed with the len, because the string is not null terminated since it is just a pointer into the prompt string
-  bool parsed;
+  int precedence;
 } Token_t;
 
 struct BinTreeNode {
   struct BinTreeNode *l, *r;
-
   Token_t token;
 };
 
@@ -130,96 +129,8 @@ bool tokencmp(const char* str, Token_t token) {
   return true;
 }
 
-static struct BinTreeNode expression_tree[PROMPT_SIZE] = {0};
-static int expression_tree_root_node_index = 0;
-static int tree_len = 0;
 static Token_t tokens[PROMPT_SIZE] = {0};
 static int tokens_len = 0;
-
-void inset_into_expression_tree(Token_t* l, Token_t* r, Token_t* root) {
-  root->parsed = true;
-  l->parsed = true;
-  r->parsed = true;
-  expression_tree[tree_len++] = (struct BinTreeNode){
-    .l = 0,
-    .r = 0,
-    .token = *root
-  };
-  expression_tree[tree_len++] = (struct BinTreeNode){
-    .l = 0,
-    .r = 0,
-    .token = *l
-  };
-  expression_tree[tree_len++] = (struct BinTreeNode){
-    .l = 0,
-    .r = 0,
-    .token = *r
-  };
-  expression_tree[tree_len-3].l = &expression_tree[tree_len-2];
-  expression_tree[tree_len-3].r = &expression_tree[tree_len-1];
-}
-
-void tokens_to_expression_tree() {
-  memset(expression_tree, 0, sizeof(struct BinTreeNode) * PROMPT_SIZE);
-  tree_len = 0;
-
-  expression_tree_root_node_index = 0;
-
-  for (int i = 0; i < tokens_len; i++) {
-    bool prev_token_avaliable = (i-1 >= 0);
-    bool next_token_avaliable = (i+1 < tokens_len);
-    Token_t* prev_token = (prev_token_avaliable) ? &tokens[i-1] : (Token_t*) {0};
-    Token_t* next_token = (next_token_avaliable) ? &tokens[i+1] : (Token_t*) {0};
-    Token_t* token = &tokens[i];
-
-    if (is_operator_token(token->type)) {
-      if (!prev_token_avaliable || !next_token_avaliable || prev_token->type != TOKEN_NUM || next_token->type != TOKEN_NUM)
-        SYNTAX_ERROR("Operator expected 2 literal numerical arguments");
-
-      if (!prev_token->parsed) {
-        inset_into_expression_tree(prev_token, next_token, token);
-      } else {
-        token->parsed = true;
-        next_token->parsed = true;
-        expression_tree[tree_len++] = (struct BinTreeNode){
-          .l = 0,
-          .r = 0,
-          .token = *token
-        };
-        expression_tree[tree_len++] = (struct BinTreeNode){
-          .l = 0,
-          .r = 0,
-          .token = *next_token
-        };
-        expression_tree[tree_len-2].l = &expression_tree[expression_tree_root_node_index];
-        expression_tree[tree_len-2].r = &expression_tree[tree_len-1];
-        expression_tree_root_node_index = tree_len-2;
-      }
-
-    }
-  }
-}
-
-double eval_subtree(struct BinTreeNode node) {
-  if (node.token.type == TOKEN_NUM) return node.token.value;
-  if (node.l == NULL || node.r == NULL) return 0.0;
-  double lvalue = eval_subtree(*node.l);
-  double rvalue = eval_subtree(*node.r);
-  switch (node.token.type) {
-    case TOKEN_SUB: return lvalue - rvalue;
-    case TOKEN_ADD: return lvalue + rvalue;
-    case TOKEN_MUL: return lvalue * rvalue;
-    case TOKEN_DIV: return lvalue / rvalue;
-    case TOKEN_POW: return pow(lvalue, rvalue);
-    default: return 0.0;
-  }
-
-  return 0.0;
-}
-
-double evaluate_expression_tree() {
-  return eval_subtree(expression_tree[expression_tree_root_node_index]);
-}
 
 void tokenise(char* str) {
   memset(tokens, 0, sizeof(Token_t) * PROMPT_SIZE);
@@ -273,7 +184,7 @@ void tokenise(char* str) {
           .value = value,
           .str = token_begin,
           .str_len = token_len,
-          .parsed = false
+          .precedence = get_operator_token_precedence(current_token_type)
       };
       current_token_type = TOKEN_NULL;
       token_begin += token_len;
@@ -303,23 +214,82 @@ void print_token(Token_t token) {
   putchar('\n');
 }
 
-void print_tree(struct BinTreeNode* root, int level) {
-    if (root == NULL) return;
+double evaluate_tokens(bool debug) { // Shunting Yard Algorithm
+  Token_t* operator_stack[PROMPT_SIZE] = {0};
+  int operator_stack_len = 0;
+  Token_t* output_queue[PROMPT_SIZE] = {0};
+  int output_queue_len = 0;
 
+  for (int i = 0; i < tokens_len; i++) {
+    Token_t* token = &tokens[i];
 
-    print_tree(root->r, level + 1);
-    
-    for(int i = 0; i < level; i++) 
-        printf("             ");  // Print spaces for indentation
+    if (token->type == TOKEN_NUM) {
+      output_queue[output_queue_len++] = token;
+    } else if (token->type == TOKEN_COMMAND) {
+      operator_stack[operator_stack_len++] = token;
+    } else if (is_operator_token(token->type)) {
+      if (operator_stack_len > 0) {
+        Token_t* o2 = operator_stack[operator_stack_len-1];
+        while (operator_stack_len > 0 && o2->type != TOKEN_LPAREN &&
+            (o2->precedence > token->precedence ||
+             o2->precedence == token->precedence)
+            ) {
+          output_queue[output_queue_len++] = operator_stack[--operator_stack_len];
+        }
+      }
+      operator_stack[operator_stack_len++] = token;
+    } else if (token->type == TOKEN_LPAREN) {
+      operator_stack[operator_stack_len++] = token;
+    } else if (token->type == TOKEN_RPAREN) {
+      while (operator_stack_len > 0 && operator_stack[operator_stack_len-1]->type != TOKEN_LPAREN) {
+        output_queue[output_queue_len++] = operator_stack[--operator_stack_len];
+      }
+      if (operator_stack_len > 0 && operator_stack[operator_stack_len-1]->type == TOKEN_LPAREN) operator_stack_len--;
+    }
+  }
+  while (operator_stack_len > 0 && operator_stack[operator_stack_len-1]->type != TOKEN_LPAREN) {
+    output_queue[output_queue_len++] = operator_stack[--operator_stack_len];
+  }
 
-    print_token(root->token);
+  double evaluation_stack[PROMPT_SIZE] = {0};
+  int evaluation_stack_len = 0;
 
-    print_tree(root->l, level + 1);
+  for (int i = 0; i < output_queue_len; i++) {
+    Token_t* token = output_queue[i];
+    if (debug) print_token(*token);
+
+    if (token->type == TOKEN_NUM) {
+      evaluation_stack[evaluation_stack_len++] = token->value;
+    } else if (is_operator_token(token->type)) {
+      if (evaluation_stack_len < 2) SYNTAX_ERROR("Infix expression expected left and right number literal");
+      double b = evaluation_stack[--evaluation_stack_len];
+      double a = evaluation_stack[--evaluation_stack_len];
+      double ans = 0.0;
+
+      if (debug) printf("%0.2f %0.2f\n", a, b);
+
+      switch (token->type) {
+        case TOKEN_MUL: ans = a * b; break;
+        case TOKEN_DIV: ans = a / b; break;
+        case TOKEN_ADD: ans = a + b; break;
+        case TOKEN_SUB: ans = a - b; break;
+        case TOKEN_POW: ans = pow(a, b); break;
+        default: SYNTAX_ERROR("Operator not implemented");
+      }
+      evaluation_stack[evaluation_stack_len++] = ans;
+    } else {
+      SYNTAX_ERROR("Unhandled token. How did this happen?");
+    }
+  }
+
+  if (evaluation_stack_len != 1) SYNTAX_ERROR("Unfinished expression");
+
+  return evaluation_stack[0];
 }
 
 void print_help() {
   printf("Arithmetic expression solver\nex\n");
-  printf("2+3\n2*3\n2/3\n2-3\n2^3\n");
+  printf("(2+3)*3/3-3^2\n");
   printf("There are also some basic functions avaliable\nex\n");
   printf("hex(2+3)\nbin(2*3)\ndec(0xFF)\n");
   printf("To exit C-c or type exit\n");
@@ -345,7 +315,7 @@ int main() {
         print_token(token);
       }
 
-      switch (token.type) { // TODO: move this into the tree parser
+      switch (token.type) { // TODO: move this into the parser
         case TOKEN_COMMAND:
           if (tokencmp("help", token)) {
             print_help();
@@ -357,33 +327,11 @@ int main() {
             exit(0);
           }
           break;
-        case TOKEN_NUM:
-          break;
-        case TOKEN_MUL:
-          break;
-        case TOKEN_ADD:
-          break;
-        case TOKEN_SUB:
-          break;
-        case TOKEN_DIV:
-          break;
-        case TOKEN_POW:
-          break;
-        case TOKEN_LPAREN:
-          break;
-        case TOKEN_RPAREN:
-          break;
         default: break;
       }
     }
 
-    tokens_to_expression_tree();
-    printf("%0.2f\n", evaluate_expression_tree());
-    if (debug) {
-      printf("%d\n", expression_tree_root_node_index);
-      print_tree(&expression_tree[expression_tree_root_node_index], 0);
-    }
-
+    printf("%0.2f\n", evaluate_tokens(debug));
   }
 
 }
