@@ -4,7 +4,8 @@
 #include <string.h>
 #include <math.h>
 
-#define PROMPT_SIZE 150
+#define PROMPT_SIZE 1024
+#define OUTPUT_SIZE 1024
 
 #define SYNTAX_ERROR(msg) do { \
   fprintf(stderr, "%s:%d SYNTAX ERROR! %s\n", __FILE__, __LINE__, msg); \
@@ -64,6 +65,14 @@ bool is_bracket(char c) {
   return false;
 }
 
+enum OutputType {
+  OUTPUT_DEC,
+  OUTPUT_HEX,
+  OUTPUT_BIN,
+  OUTPUT_BASE64,
+  OUTPUT_BASE32,
+  OUTPUT_BASE16
+};
 
 enum TokenType {
   TOKEN_NULL = 0,
@@ -151,6 +160,18 @@ void print_token(Token_t token) {
   putchar('\n');
 }
 
+void print_help(bool advanced) {
+  printf("Arithmetic expression solver\n");
+  if (advanced) {
+    printf("UNFINISHED\n");
+  } else {
+    printf("(2+3)*3/3-3^2\n");
+    printf("There are also some basic functions avaliable\nex\n");
+    printf("hex(2+3)\nbin(2*3)\ndec(0xFF)\n");
+    printf("To exit C-c or type exit\n");
+  }
+}
+
 bool tokencmp(const char* str, Token_t token) {
   int str_len = strlen(str);
   if (str_len != token.str_len) return false;
@@ -234,7 +255,7 @@ void tokenise(char* str) {
 }
 
 
-double evaluate_tokens() { // Shunting Yard Algorithm
+void evaluate_tokens(char* output) { // Shunting Yard Algorithm
   if (debug) printf("PARSER\n"); 
 
   Token_t* operator_stack[PROMPT_SIZE] = {0};
@@ -279,6 +300,7 @@ double evaluate_tokens() { // Shunting Yard Algorithm
     }
   }
 
+  enum OutputType output_type = OUTPUT_DEC;
   double evaluation_stack[PROMPT_SIZE] = {0};
   int evaluation_stack_len = 0;
 
@@ -295,6 +317,7 @@ double evaluate_tokens() { // Shunting Yard Algorithm
         if (tokencmp("exit", *token)) {
           exit((has_arg) ? (int)arg : 0);
           return_val = -1;
+        } else if (tokencmp("help", *token)) { print_help((arg == 1));
         } else if (tokencmp("debug", *token)) {
           if (arg >= 1) debug = true;
           else debug = false;
@@ -307,6 +330,9 @@ double evaluate_tokens() { // Shunting Yard Algorithm
         } else if (tokencmp("rad", *token)) { return_val = deg_to_rad(arg);
         } else if (tokencmp("fah", *token)) { return_val = cel_to_fah(arg);
         } else if (tokencmp("cel", *token)) { return_val = fah_to_cel(arg);
+        } else if (tokencmp("hex", *token)) { output_type = OUTPUT_HEX; return_val = arg;
+        } else if (tokencmp("dec", *token)) { output_type = OUTPUT_DEC; return_val = arg;
+        } else if (tokencmp("bin", *token)) { output_type = OUTPUT_BIN; return_val = arg;
         }
 
         evaluation_stack[evaluation_stack_len++] = return_val;
@@ -336,29 +362,26 @@ double evaluate_tokens() { // Shunting Yard Algorithm
 
   if (evaluation_stack_len != 1) SYNTAX_ERROR("Unfinished expression");
 
-  return evaluation_stack[0];
+  switch (output_type) {
+    case OUTPUT_DEC: snprintf(output, OUTPUT_SIZE, "%0.3f", evaluation_stack[0]); break;
+    case OUTPUT_HEX: snprintf(output, OUTPUT_SIZE, "0x%X", (int)evaluation_stack[0]); break;
+    case OUTPUT_BIN: snprintf(output, OUTPUT_SIZE, "0b%b", (int)evaluation_stack[0]); break;
+    default: SYNTAX_ERROR("Unknown output type");
+  }
 }
 
-void print_help() {
-  printf("Arithmetic expression solver\nex\n");
-  printf("(2+3)*3/3-3^2\n");
-  printf("There are also some basic functions avaliable\nex\n");
-  printf("hex(2+3)\nbin(2*3)\ndec(0xFF)\n");
-  printf("To exit C-c or type exit\n");
-}
 
 int main() {
   while (1) {
     printf("> ");
     char prompt[PROMPT_SIZE] = {0};
+    char output[OUTPUT_SIZE] = {0};
     fgets(prompt, PROMPT_SIZE, stdin);
     prompt[strlen(prompt)-1] = 0;
 
-    
     tokenise(prompt);
+    evaluate_tokens(output);
 
-    // TODO: make evaluate_tokens return a string which can be printed directly to support hex
-    printf("%0.2f\n", evaluate_tokens());
+    printf("%s\n", output);
   }
-
 }
