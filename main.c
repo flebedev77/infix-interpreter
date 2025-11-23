@@ -19,6 +19,46 @@ double rad_to_deg(double x) { return x * 180/PI; }
 double cel_to_fah(double x) { return (x * 9/5) + 32; }
 double fah_to_cel(double x) { return (x - 32) * 5/9; }
 
+int nibble_to_int(char nib) {
+  switch (nib) {
+    case '0': return 0;
+    case '1': return 1;
+    case '2': return 2;
+    case '3': return 3;
+    case '4': return 4;
+    case '5': return 5;
+    case '6': return 6;
+    case '7': return 7;
+    case '8': return 8;
+    case '9': return 9;
+    case 'A': return 10;
+    case 'a': return 10;
+    case 'B': return 11;
+    case 'b': return 11;
+    case 'C': return 12;
+    case 'c': return 12;
+    case 'D': return 13;
+    case 'd': return 13;
+    case 'E': return 14;
+    case 'e': return 14;
+    case 'F': return 15;
+    case 'f': return 15;
+  }
+  return -99999;
+}
+
+int hex_to_int(char* hex, int len) {
+  hex += 2;
+  len -= 2;
+  int acc = 0;
+  for (int i = 0; i < len; i++) {
+    char c = hex[i];
+    acc *= 16;
+    acc += nibble_to_int(c);
+  }
+  return acc;
+}
+
 bool is_number(char c) {
   switch (c) {
     case '0': return true;
@@ -197,6 +237,7 @@ void tokenise(char* str) {
   int token_len = 0;
 
   enum TokenType current_token_type = TOKEN_NULL;
+  bool currently_hex = false;
 
   for (int i = 0; i < str_len; i++) {
     char c = str[i];
@@ -225,6 +266,11 @@ void tokenise(char* str) {
 
     if (current_token_type != get_char_token_type(nc)) {
       eot = true;
+      if (currently_hex && (get_char_token_type(nc) == TOKEN_NUM || get_char_token_type(nc) == TOKEN_COMMAND)) eot = false;
+      if (current_token_type == TOKEN_NUM && token_begin[0] == '0' && get_char_token_type(nc) == TOKEN_COMMAND) {
+        currently_hex = true;
+        eot = false;
+      }
     }
 
     if (eot && current_token_type != TOKEN_NULL) {
@@ -235,6 +281,11 @@ void tokenise(char* str) {
         memcpy(buf, token_begin, token_len);
         value = atof(buf);
       }
+
+      if (currently_hex) {
+        value = (double)hex_to_int(token_begin, token_len);
+        current_token_type = TOKEN_NUM;
+      }
       tokens[tokens_len++] = (Token_t) {
         .type = current_token_type,
           .value = value,
@@ -243,6 +294,7 @@ void tokenise(char* str) {
           .precedence = get_operator_token_precedence(current_token_type)
       };
       current_token_type = TOKEN_NULL;
+      currently_hex = false;
       token_begin += token_len;
       token_len = 0;
 
