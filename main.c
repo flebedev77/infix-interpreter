@@ -11,6 +11,13 @@
   exit(EXIT_FAILURE); \
 } while (0)
 
+#define PI 3.141592653589793238462643383279502884197169399375105820974944592307816406286208998628
+
+double deg_to_rad(double x) { return x * PI/180; }
+double rad_to_deg(double x) { return x * 180/PI; }
+double cel_to_fah(double x) { return (x * 9/5) + 32; }
+double fah_to_cel(double x) { return (x - 32) * 5/9; }
+
 bool is_number(char c) {
   switch (c) {
     case '0': return true;
@@ -65,14 +72,15 @@ enum TokenType {
   TOKEN_ADD = 3,
   TOKEN_SUB = 4,
   TOKEN_DIV = 5,
-  TOKEN_POW = 6, // TODO: Add remainder operator
-  TOKEN_LPAREN = 7,
-  TOKEN_RPAREN = 8,
-  TOKEN_COMMAND = 9
+  TOKEN_POW = 6,
+  TOKEN_REM = 7,
+  TOKEN_COMMAND = 8,
+  TOKEN_LPAREN = 9,
+  TOKEN_RPAREN = 10
 };
 
 bool is_operator_token(enum TokenType type) {
-  if (type >= 2 && type <= 6) return true;
+  if (type >= 2 && type <= TOKEN_COMMAND) return true;
   return false;
 }
 
@@ -83,8 +91,9 @@ int get_operator_token_precedence(enum TokenType type) {
     case TOKEN_MUL: return 2;
     case TOKEN_DIV: return 2;
     case TOKEN_POW: return 3;
-    case TOKEN_LPAREN: return 4;
-    case TOKEN_RPAREN: return 4;
+    case TOKEN_COMMAND: return 4;
+    case TOKEN_LPAREN: return 5;
+    case TOKEN_RPAREN: return 5;
     default: return -1;
   }
 }
@@ -101,10 +110,12 @@ enum TokenType get_char_token_type(char c) {
     case '/': return TOKEN_DIV;
     case '*': return TOKEN_MUL;
     case '^': return TOKEN_POW;
+    case '%': return TOKEN_REM;
   }
 
   return TOKEN_NULL;
 }
+
 
 typedef struct {
   enum TokenType type;
@@ -119,6 +130,27 @@ struct BinTreeNode {
   Token_t token;
 };
 
+void print_token(Token_t token) {
+  switch (token.type) {
+    case TOKEN_NUM: printf("TOKEN_NUM "); break;
+    case TOKEN_MUL: printf("TOKEN_MUL "); break;
+    case TOKEN_ADD: printf("TOKEN_ADD "); break;
+    case TOKEN_SUB: printf("TOKEN_SUB "); break;
+    case TOKEN_DIV: printf("TOKEN_DIV "); break;
+    case TOKEN_POW: printf("TOKEN_POW "); break;
+    case TOKEN_REM: printf("TOKEN_REM "); break;
+    case TOKEN_LPAREN: printf("TOKEN_LPAREN "); break;
+    case TOKEN_RPAREN: printf("TOKEN_RPAREN "); break;
+    case TOKEN_COMMAND: printf("TOKEN_COMMAND "); break;
+    case TOKEN_NULL: printf("TOKEN_NULL "); break;
+    default: printf("TOKEN_UNKNOWN "); break;
+  }
+  for (int j = 0; j < token.str_len; j++) {
+    putchar(token.str[j]);
+  }
+  putchar('\n');
+}
+
 bool tokencmp(const char* str, Token_t token) {
   int str_len = strlen(str);
   if (str_len != token.str_len) return false;
@@ -129,10 +161,13 @@ bool tokencmp(const char* str, Token_t token) {
   return true;
 }
 
+bool debug = false;
 static Token_t tokens[PROMPT_SIZE] = {0};
 static int tokens_len = 0;
 
 void tokenise(char* str) {
+  if (debug) printf("TOKENISER\n");
+
   memset(tokens, 0, sizeof(Token_t) * PROMPT_SIZE);
   tokens_len = 0;
 
@@ -172,7 +207,7 @@ void tokenise(char* str) {
     }
 
     if (eot && current_token_type != TOKEN_NULL) {
-      // TODO Implement my own atof that expects a string with a size instead of null terminated
+      // TODO: Implement my own atof that expects a string with a size instead of null terminated
       double value = 0.0; 
       if (current_token_type == TOKEN_NUM) {
         char buf[PROMPT_SIZE] = {0};
@@ -189,32 +224,19 @@ void tokenise(char* str) {
       current_token_type = TOKEN_NULL;
       token_begin += token_len;
       token_len = 0;
+
+      if (debug) print_token(tokens[tokens_len-1]);
     }
 
   }
+
+  if (debug) printf("\n");
 }
 
-void print_token(Token_t token) {
-  switch (token.type) {
-    case TOKEN_NUM: printf("TOKEN_NUM "); break;
-    case TOKEN_MUL: printf("TOKEN_MUL "); break;
-    case TOKEN_ADD: printf("TOKEN_ADD "); break;
-    case TOKEN_SUB: printf("TOKEN_SUB "); break;
-    case TOKEN_DIV: printf("TOKEN_DIV "); break;
-    case TOKEN_POW: printf("TOKEN_POW "); break;
-    case TOKEN_LPAREN: printf("TOKEN_LPAREN "); break;
-    case TOKEN_RPAREN: printf("TOKEN_RPAREN "); break;
-    case TOKEN_COMMAND: printf("TOKEN_COMMAND "); break;
-    case TOKEN_NULL: printf("TOKEN_NULL "); break;
-    default: printf("TOKEN_UNKNOWN "); break;
-  }
-  for (int j = 0; j < token.str_len; j++) {
-    putchar(token.str[j]);
-  }
-  putchar('\n');
-}
 
-double evaluate_tokens(bool debug) { // Shunting Yard Algorithm
+double evaluate_tokens() { // Shunting Yard Algorithm
+  if (debug) printf("PARSER\n"); 
+
   Token_t* operator_stack[PROMPT_SIZE] = {0};
   int operator_stack_len = 0;
   Token_t* output_queue[PROMPT_SIZE] = {0};
@@ -225,16 +247,15 @@ double evaluate_tokens(bool debug) { // Shunting Yard Algorithm
 
     if (token->type == TOKEN_NUM) {
       output_queue[output_queue_len++] = token;
-    } else if (token->type == TOKEN_COMMAND) {
-      operator_stack[operator_stack_len++] = token;
     } else if (is_operator_token(token->type)) {
       if (operator_stack_len > 0) {
         Token_t* o2 = operator_stack[operator_stack_len-1];
         while (operator_stack_len > 0 && o2->type != TOKEN_LPAREN &&
             (o2->precedence > token->precedence ||
-             o2->precedence == token->precedence)
+            (o2->precedence == token->precedence))
             ) {
           output_queue[output_queue_len++] = operator_stack[--operator_stack_len];
+          o2 = operator_stack[operator_stack_len-1];
         }
       }
       operator_stack[operator_stack_len++] = token;
@@ -250,33 +271,64 @@ double evaluate_tokens(bool debug) { // Shunting Yard Algorithm
   while (operator_stack_len > 0 && operator_stack[operator_stack_len-1]->type != TOKEN_LPAREN) {
     output_queue[output_queue_len++] = operator_stack[--operator_stack_len];
   }
+  if (operator_stack_len > 0 && operator_stack[operator_stack_len-1]->type == TOKEN_LPAREN) operator_stack_len--;
+
+  if (debug) {
+    for (int i = 0; i < output_queue_len; i++) {
+      print_token(*output_queue[i]);
+    }
+  }
 
   double evaluation_stack[PROMPT_SIZE] = {0};
   int evaluation_stack_len = 0;
 
   for (int i = 0; i < output_queue_len; i++) {
     Token_t* token = output_queue[i];
-    if (debug) print_token(*token);
 
     if (token->type == TOKEN_NUM) {
       evaluation_stack[evaluation_stack_len++] = token->value;
     } else if (is_operator_token(token->type)) {
-      if (evaluation_stack_len < 2) SYNTAX_ERROR("Infix expression expected left and right number literal");
-      double b = evaluation_stack[--evaluation_stack_len];
-      double a = evaluation_stack[--evaluation_stack_len];
-      double ans = 0.0;
+      if (token->type == TOKEN_COMMAND) {
+        bool has_arg = (evaluation_stack_len > 0); 
+        double arg = has_arg ? evaluation_stack[--evaluation_stack_len] : -1.0;
+        double return_val = 0.0;
+        if (tokencmp("exit", *token)) {
+          exit((has_arg) ? (int)arg : 0);
+          return_val = -1;
+        } else if (tokencmp("debug", *token)) {
+          if (arg >= 1) debug = true;
+          else debug = false;
+          if (debug) printf("%0.2f %b\n", arg, debug);
+          return_val = (double)debug;
 
-      if (debug) printf("%0.2f %0.2f\n", a, b);
+        } else if (tokencmp("sin", *token)) { return_val = sin(deg_to_rad(arg));
+        } else if (tokencmp("cos", *token)) { return_val = cos(deg_to_rad(arg));
+        } else if (tokencmp("deg", *token)) { return_val = rad_to_deg(arg);
+        } else if (tokencmp("rad", *token)) { return_val = deg_to_rad(arg);
+        } else if (tokencmp("fah", *token)) { return_val = cel_to_fah(arg);
+        } else if (tokencmp("cel", *token)) { return_val = fah_to_cel(arg);
+        }
 
-      switch (token->type) {
-        case TOKEN_MUL: ans = a * b; break;
-        case TOKEN_DIV: ans = a / b; break;
-        case TOKEN_ADD: ans = a + b; break;
-        case TOKEN_SUB: ans = a - b; break;
-        case TOKEN_POW: ans = pow(a, b); break;
-        default: SYNTAX_ERROR("Operator not implemented");
+        evaluation_stack[evaluation_stack_len++] = return_val;
+      } else {
+        if (evaluation_stack_len < 2) SYNTAX_ERROR("Infix expression expected left and right number literal");
+        double b = evaluation_stack[--evaluation_stack_len];
+        double a = evaluation_stack[--evaluation_stack_len];
+        double ans = 0.0;
+
+        if (debug) printf("%0.2f %0.2f\n", a, b);
+
+        switch (token->type) {
+          case TOKEN_MUL: ans = a * b; break;
+          case TOKEN_DIV: ans = a / b; break;
+          case TOKEN_ADD: ans = a + b; break;
+          case TOKEN_SUB: ans = a - b; break;
+          case TOKEN_POW: ans = pow(a, b); break;
+          case TOKEN_REM: ans = (int)a % (int)b; break;
+          default: SYNTAX_ERROR("Operator not implemented");
+        }
+        evaluation_stack[evaluation_stack_len++] = ans;
       }
-      evaluation_stack[evaluation_stack_len++] = ans;
     } else {
       SYNTAX_ERROR("Unhandled token. How did this happen?");
     }
@@ -302,36 +354,11 @@ int main() {
     fgets(prompt, PROMPT_SIZE, stdin);
     prompt[strlen(prompt)-1] = 0;
 
-    static bool debug = false;
     
     tokenise(prompt);
 
-    for (int i = 0; i < tokens_len; i++) {
-      Token_t token = tokens[i];
-      bool next_token_avaliable = (i+1 < tokens_len);
-      Token_t next_token = (next_token_avaliable) ? tokens[i+1] : (Token_t){0};
-
-      if (debug) {
-        print_token(token);
-      }
-
-      switch (token.type) { // TODO: move this into the parser
-        case TOKEN_COMMAND:
-          if (tokencmp("help", token)) {
-            print_help();
-          } else if (tokencmp("debug", token)) {
-            if (tokencmp("on", next_token) && next_token_avaliable) debug = true;
-            else if (tokencmp("off", next_token) && next_token_avaliable) debug = false; 
-            else debug = !debug;
-          } else if (tokencmp("exit", token)) {
-            exit(0);
-          }
-          break;
-        default: break;
-      }
-    }
-
-    printf("%0.2f\n", evaluate_tokens(debug));
+    // TODO: make evaluate_tokens return a string which can be printed directly to support hex
+    printf("%0.2f\n", evaluate_tokens());
   }
 
 }
