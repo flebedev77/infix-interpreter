@@ -255,7 +255,7 @@ double evaluate_tokens() { // Shunting Yard Algorithm
             (o2->precedence == token->precedence))
             ) {
           output_queue[output_queue_len++] = operator_stack[--operator_stack_len];
-          o2 = operator_stack[operator_stack_len-1];
+          if (operator_stack_len > 0) o2 = operator_stack[operator_stack_len-1];
         }
       }
       operator_stack[operator_stack_len++] = token;
