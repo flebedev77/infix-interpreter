@@ -9,8 +9,8 @@
 
 #define SYNTAX_ERROR(msg) do { \
   fprintf(stderr, "%s:%d SYNTAX ERROR! %s\n", __FILE__, __LINE__, msg); \
-  exit(EXIT_FAILURE); \
 } while (0)
+// exit(EXIT_FAILURE); \
 
 #define PI 3.141592653589793238462643383279502884197169399375105820974944592307816406286208998628
 
@@ -97,6 +97,9 @@ bool is_operator(char c) {
     case '^': return true;
     case '%': return true;
     case '!': return true;
+    case '<': return true;
+    case '>': return true;
+    case '=': return true;
     default: return false;
   }
   return false;
@@ -135,9 +138,11 @@ enum TokenType {
   TOKEN_DIV = 5,
   TOKEN_POW = 6,
   TOKEN_REM = 7,
-  TOKEN_COMMAND = 8,
-  TOKEN_LPAREN = 9,
-  TOKEN_RPAREN = 10
+  TOKEN_BSL = 8,
+  TOKEN_BSR = 9,
+  TOKEN_COMMAND = 10,
+  TOKEN_LPAREN = 11,
+  TOKEN_RPAREN = 12
 };
 
 bool is_operator_token(enum TokenType type) {
@@ -152,9 +157,11 @@ int get_operator_token_precedence(enum TokenType type) {
     case TOKEN_MUL: return 2;
     case TOKEN_DIV: return 2;
     case TOKEN_POW: return 3;
-    case TOKEN_COMMAND: return 4;
-    case TOKEN_LPAREN: return 5;
-    case TOKEN_RPAREN: return 5;
+    case TOKEN_BSR: return 4;
+    case TOKEN_BSL: return 4;
+    case TOKEN_COMMAND: return 5;
+    case TOKEN_LPAREN: return 6;
+    case TOKEN_RPAREN: return 6;
     default: return -1;
   }
 }
@@ -172,6 +179,8 @@ enum TokenType get_char_token_type(char c) {
     case '*': return TOKEN_MUL;
     case '^': return TOKEN_POW;
     case '%': return TOKEN_REM;
+    case '<': return TOKEN_BSL;
+    case '>': return TOKEN_BSR;
   }
 
   return TOKEN_NULL;
@@ -200,6 +209,8 @@ void print_token(Token_t token) {
     case TOKEN_DIV: printf("TOKEN_DIV "); break;
     case TOKEN_POW: printf("TOKEN_POW "); break;
     case TOKEN_REM: printf("TOKEN_REM "); break;
+    case TOKEN_BSL: printf("TOKEN_BSL "); break;
+    case TOKEN_BSR: printf("TOKEN_BSR "); break;
     case TOKEN_LPAREN: printf("TOKEN_LPAREN "); break;
     case TOKEN_RPAREN: printf("TOKEN_RPAREN "); break;
     case TOKEN_COMMAND: printf("TOKEN_COMMAND "); break;
@@ -265,6 +276,10 @@ void tokenise(char* str) {
       current_token_type = get_char_token_type(c);
       eot = true;
       token_len++;
+
+      if ((current_token_type == TOKEN_BSL || current_token_type == TOKEN_BSR) &&
+          get_char_token_type(nc) == current_token_type)
+        eot = false; 
     }
 
     if (is_alphabetic(c)) {
@@ -283,7 +298,6 @@ void tokenise(char* str) {
       if (current_token_type == TOKEN_NUM && token_begin[0] == '0' && get_char_token_type(nc) == TOKEN_COMMAND) {
         if (nc == 'x') currently_hex = true;
         else if (nc == 'b') currently_binary = true;
-        
         eot = false;
       }
     }
@@ -300,11 +314,11 @@ void tokenise(char* str) {
       if (currently_hex) {
         value = (double)hex_to_int(token_begin, token_len);
         current_token_type = TOKEN_NUM;
-      }
-      if (currently_binary) {
+      } else if (currently_binary) {
         value = (double)bin_to_int(token_begin, token_len);
         current_token_type = TOKEN_NUM;
       }
+
       tokens[tokens_len++] = (Token_t) {
         .type = current_token_type,
           .value = value,
@@ -317,6 +331,15 @@ void tokenise(char* str) {
       currently_binary = false;
       token_begin += token_len;
       token_len = 0;
+
+      Token_t* lt = &tokens[tokens_len-1];
+      if (tokencmp("true", *lt)) {
+        lt->type = TOKEN_NUM;
+        lt->value = 1.0;
+      } else if (tokencmp("false", *lt)) {
+        lt->type = TOKEN_NUM;
+        lt->value = 0.0;
+      }
 
       if (debug) print_token(tokens[tokens_len-1]);
     }
@@ -405,6 +428,8 @@ void evaluate_tokens(char* output) { // Shunting Yard Algorithm
         } else if (tokencmp("hex", *token)) { output_type = OUTPUT_HEX; return_val = arg;
         } else if (tokencmp("dec", *token)) { output_type = OUTPUT_DEC; return_val = arg;
         } else if (tokencmp("bin", *token)) { output_type = OUTPUT_BIN; return_val = arg;
+        } else {
+          SYNTAX_ERROR("Unknown function or command");
         }
 
         evaluation_stack[evaluation_stack_len++] = return_val;
@@ -423,6 +448,8 @@ void evaluate_tokens(char* output) { // Shunting Yard Algorithm
           case TOKEN_SUB: ans = a - b; break;
           case TOKEN_POW: ans = pow(a, b); break;
           case TOKEN_REM: ans = (int)a % (int)b; break;
+          case TOKEN_BSL: ans = (int)a << (int)b; break;
+          case TOKEN_BSR: ans = (int)a >> (int)b; break;
           default: SYNTAX_ERROR("Operator not implemented");
         }
         evaluation_stack[evaluation_stack_len++] = ans;
