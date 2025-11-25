@@ -44,7 +44,7 @@ int nibble_to_int(char nib) {
     case 'F': return 15;
     case 'f': return 15;
   }
-  return -99999;
+  return 0;
 }
 
 int hex_to_int(char* hex, int len) {
@@ -55,6 +55,18 @@ int hex_to_int(char* hex, int len) {
     char c = hex[i];
     acc *= 16;
     acc += nibble_to_int(c);
+  }
+  return acc;
+}
+
+int bin_to_int(char* bin, int len) {
+  bin += 2;
+  len -= 2;
+  int acc = 0;
+  for (int i = 0; i < len; i++) {
+    char c = bin[i];
+    acc *= 2;
+    acc += (c == '0') ? 0 : 1;
   }
   return acc;
 }
@@ -237,7 +249,8 @@ void tokenise(char* str) {
   int token_len = 0;
 
   enum TokenType current_token_type = TOKEN_NULL;
-  bool currently_hex = false;
+  bool currently_hex = false,
+       currently_binary = false;
 
   for (int i = 0; i < str_len; i++) {
     char c = str[i];
@@ -266,9 +279,11 @@ void tokenise(char* str) {
 
     if (current_token_type != get_char_token_type(nc)) {
       eot = true;
-      if (currently_hex && (get_char_token_type(nc) == TOKEN_NUM || get_char_token_type(nc) == TOKEN_COMMAND)) eot = false;
+      if ((currently_hex || currently_binary) && (get_char_token_type(nc) == TOKEN_NUM || get_char_token_type(nc) == TOKEN_COMMAND)) eot = false;
       if (current_token_type == TOKEN_NUM && token_begin[0] == '0' && get_char_token_type(nc) == TOKEN_COMMAND) {
-        currently_hex = true;
+        if (nc == 'x') currently_hex = true;
+        else if (nc == 'b') currently_binary = true;
+        
         eot = false;
       }
     }
@@ -286,6 +301,10 @@ void tokenise(char* str) {
         value = (double)hex_to_int(token_begin, token_len);
         current_token_type = TOKEN_NUM;
       }
+      if (currently_binary) {
+        value = (double)bin_to_int(token_begin, token_len);
+        current_token_type = TOKEN_NUM;
+      }
       tokens[tokens_len++] = (Token_t) {
         .type = current_token_type,
           .value = value,
@@ -295,6 +314,7 @@ void tokenise(char* str) {
       };
       current_token_type = TOKEN_NULL;
       currently_hex = false;
+      currently_binary = false;
       token_begin += token_len;
       token_len = 0;
 
