@@ -4,16 +4,23 @@
 #include <string.h>
 #include <math.h>
 
-#define PROMPT_SIZE 1024
-#define OUTPUT_SIZE 1024
+#include <unistd.h>
+#include <ctype.h>
+#include <termios.h>
+
+// As found in the termios man page - (The read buffer will only accept 4095 chars)
+// No reason to set these constants to anything else
+#define PROMPT_SIZE 4095
+#define OUTPUT_SIZE 4095
+#define PROMPT_HISTORY_SIZE 20
+#define PROMPT_STRING "> "
 
 #define SYNTAX_ERROR(msg) do { \
-  fprintf(stderr, "%s:%d SYNTAX ERROR! %s\n", __FILE__, __LINE__, msg); \
+  fprintf(stderr, "%s:%d SYNTAX ERROR! %s\n\r", __FILE__, __LINE__, msg); \
 } while (0)
 // exit(EXIT_FAILURE); \
 
 #define PI 3.141592653589793238462643383279502884197169399375105820974944592307816406286208998628
-
 double deg_to_rad(double x) { return x * PI/180; }
 double rad_to_deg(double x) { return x * 180/PI; }
 double cel_to_fah(double x) { return (x * 9/5) + 32; }
@@ -339,6 +346,9 @@ void tokenise(char* str) {
       } else if (tokencmp("false", *lt)) {
         lt->type = TOKEN_NUM;
         lt->value = 0.0;
+      } else if (tokencmp("PI", *lt) || tokencmp("pi", *lt)) {
+        lt->type = TOKEN_NUM;
+        lt->value = PI;
       }
 
       if (debug) print_token(tokens[tokens_len-1]);
@@ -469,18 +479,115 @@ void evaluate_tokens(char* output) { // Shunting Yard Algorithm
   }
 }
 
+struct termios original_spec = {0};
+
+void close_terminal() {
+  tcsetattr(STDIN_FILENO, TCSAFLUSH, &original_spec);
+}
+
+void setup_terminal() {
+  struct termios spec = {0};
+  tcgetattr(STDIN_FILENO, &spec);
+  original_spec = spec;
+  // cfmakeraw(&spec);
+  spec.c_lflag &= ~(ECHO | ICANON);
+  tcsetattr(STDIN_FILENO, TCSAFLUSH, &spec);
+  atexit(close_terminal);
+}
+
+
+void handle_keyboard(char* prompt, char* prompt_history, int current_history_index) {
+  int initial_history_ind = current_history_index;
+  char c;
+  int i = 0;
+  bool editing_middle = false;
+  while (read(STDIN_FILENO, &c, 1) == 1) {
+    if (c == '\n' || c == '\b') {
+      write(STDOUT_FILENO, "\n", 1);
+      break;
+    }
+    if (debug) printf("%d ", c);
+    if (c == 127 && i > 0) { // Backspace
+      // printf("\r\033[%dC", i + 2);
+      prompt[--i] = 0;
+      printf("\033[1D \033[1D");
+      fflush(stdout);
+    } else if (c == '\033') {
+      char nc[2];
+      read(STDIN_FILENO, nc, 2);
+      if (nc[0] == '[') {
+        switch (nc[1]) {
+          case 'D': 
+            if (i > 0) {
+              i--;
+              editing_middle = true;
+              printf("\033[1D"); 
+            }
+            break; //left
+          case 'C': 
+            // TODO replace strlen with a variable
+            int prompt_len = strlen(prompt);
+            if (i < prompt_len) {
+              i++;
+              printf("\033[1C");
+            } 
+            if (i >= prompt_len) editing_middle = false;
+            break; //right
+          case 'A': 
+            if (current_history_index > 0) {
+              current_history_index--;
+            }
+            memcpy(prompt, &prompt_history[current_history_index * PROMPT_SIZE], PROMPT_SIZE);
+            printf("\033[2K\r%s%s", PROMPT_STRING, prompt);
+            break; //up
+          case 'B':
+            if (current_history_index < initial_history_ind-1) {
+              current_history_index++;
+              memcpy(prompt, &prompt_history[current_history_index * PROMPT_SIZE], PROMPT_SIZE);
+            } else {
+              memset(prompt, 0, PROMPT_SIZE);
+            }
+            printf("\033[2K\r%s%s", PROMPT_STRING, prompt);
+            break; //down
+        }
+        fflush(stdout);
+      }
+    } else if (!iscntrl(c)) {
+      prompt[i++] = c;
+      putchar(c);
+      fflush(stdout);
+    } 
+
+  }
+}
 
 int main() {
+  char* prompt_storage = (char*)malloc(sizeof(char) * PROMPT_SIZE * PROMPT_HISTORY_SIZE);
+  int prompt_storage_index = 0;
+
+  if (prompt_storage == NULL) {
+    printf("Error allocating memory for prompt history, it will be disabled\n");
+  }
+
+  setup_terminal();
+
   while (1) {
-    printf("> ");
+    printf("\r%s", PROMPT_STRING);
+    fflush(stdout);
     char prompt[PROMPT_SIZE] = {0};
     char output[OUTPUT_SIZE] = {0};
-    fgets(prompt, PROMPT_SIZE, stdin);
-    prompt[strlen(prompt)-1] = 0;
+
+    handle_keyboard(prompt, prompt_storage, prompt_storage_index);
+    // TODO: avoid this copy by storing the actual prompt as a part in the history memory
+    memcpy(&prompt_storage[prompt_storage_index * PROMPT_SIZE], prompt, PROMPT_SIZE);
+    prompt_storage_index = (prompt_storage_index + 1) % PROMPT_HISTORY_SIZE;
+    // fgets(prompt, PROMPT_SIZE, stdin);
+    // prompt[strlen(prompt)-1] = 0;
 
     tokenise(prompt);
     evaluate_tokens(output);
 
     printf("%s\n", output);
+    fflush(stdout);
   }
 }
