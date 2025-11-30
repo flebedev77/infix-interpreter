@@ -468,6 +468,7 @@ void evaluate_tokens(char* output) { // Shunting Yard Algorithm
         bool has_arg = (evaluation_stack_len > 0); 
         Token_t arg = has_arg ? evaluation_stack[--evaluation_stack_len] : (Token_t){0};
         double return_val = 0.0;
+        bool is_string_output = false;
         if (tokencmp("exit", *token)) {
           exit((has_arg) ? (int)arg.value : 0);
           return_val = -1;
@@ -494,11 +495,15 @@ void evaluate_tokens(char* output) { // Shunting Yard Algorithm
         } else if (tokencmp("ceil", *token)) { return_val = ceil(arg.value);
         } else if (tokencmp("abs", *token)) { return_val = fabs(arg.value);
         } else if (tokencmp("len", *token)) { return_val = arg.str_len;
+        } else if (tokencmp("chr", *token) || tokencmp("char", *token)) { is_string_output = true; return_val = arg.value;
         } else {
           SYNTAX_ERROR("Unknown function or command");
         }
 
-        evaluation_stack[evaluation_stack_len++] = (Token_t){ .type = TOKEN_NUM, .value = return_val };
+        if (is_string_output) {
+          evaluation_string_storage[string_storage_len++] = (char)return_val;
+          evaluation_stack[evaluation_stack_len++] = (Token_t){ .type = TOKEN_STR, .str = &evaluation_string_storage[string_storage_len-1], .str_len = 1 };
+        } else evaluation_stack[evaluation_stack_len++] = (Token_t){ .type = TOKEN_NUM, .value = return_val };
       } else {
         if (token->type == TOKEN_SUB || token->type == TOKEN_NOT) {
           if (evaluation_stack_len < 1) SYNTAX_ERROR("Negative or inversed numbers expect a numeric literal");
