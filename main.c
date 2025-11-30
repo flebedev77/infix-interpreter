@@ -140,28 +140,30 @@ enum OutputType {
 enum TokenType {
   TOKEN_NULL = 0,
   TOKEN_STR = 1,
-  TOKEN_NUM = 2,
-  TOKEN_MUL = 3,
-  TOKEN_ADD = 4,
-  TOKEN_SUB = 5,
-  TOKEN_DIV = 6,
-  TOKEN_POW = 7,
-  TOKEN_REM = 8,
-  TOKEN_BSL = 9,
-  TOKEN_BSR = 10,
-  TOKEN_NOT = 11,
-  TOKEN_COMMAND = 12,
-  TOKEN_LPAREN = 13,
-  TOKEN_RPAREN = 14
+  TOKEN_EQU = 2,
+  TOKEN_NUM = 3,
+  TOKEN_MUL = 4,
+  TOKEN_ADD = 5,
+  TOKEN_SUB = 6,
+  TOKEN_DIV = 7,
+  TOKEN_POW = 8,
+  TOKEN_REM = 9,
+  TOKEN_BSL = 10,
+  TOKEN_BSR = 11,
+  TOKEN_NOT = 12,
+  TOKEN_COMMAND = 13,
+  TOKEN_LPAREN = 14,
+  TOKEN_RPAREN = 15
 };
 
 bool is_operator_token(enum TokenType type) {
-  if (type >= 3 && type <= TOKEN_COMMAND) return true;
+  if (type >= 4 && type <= TOKEN_COMMAND || type == TOKEN_EQU) return true;
   return false;
 }
 
 int get_operator_token_precedence(enum TokenType type) {
   switch (type) {
+    case TOKEN_EQU: return 0;
     case TOKEN_SUB: return 1;
     case TOKEN_ADD: return 1;
     case TOKEN_MUL: return 2;
@@ -193,6 +195,7 @@ enum TokenType get_char_token_type(char c) {
     case '<': return TOKEN_BSL;
     case '>': return TOKEN_BSR;
     case '!': return TOKEN_NOT;
+    case '=': return TOKEN_EQU;
   }
 
   return TOKEN_NULL;
@@ -224,6 +227,7 @@ void print_token(Token_t token) {
     case TOKEN_BSL: printf("TOKEN_BSL "); break;
     case TOKEN_BSR: printf("TOKEN_BSR "); break;
     case TOKEN_NOT: printf("TOKEN_NOT "); break;
+    case TOKEN_EQU: printf("TOKEN_EQU "); break;
     case TOKEN_LPAREN: printf("TOKEN_LPAREN "); break;
     case TOKEN_RPAREN: printf("TOKEN_RPAREN "); break;
     case TOKEN_COMMAND: printf("TOKEN_COMMAND "); break;
@@ -530,6 +534,7 @@ void evaluate_tokens(char* output) { // Shunting Yard Algorithm
             case TOKEN_REM: ans = (int)a.value % (int)b.value; break;
             case TOKEN_BSL: ans = (int)a.value << (int)b.value; break;
             case TOKEN_BSR: ans = (int)a.value >> (int)b.value; break;
+            case TOKEN_EQU: ans = (a.value == b.value); break;
             default: SYNTAX_ERROR("Operator not implemented");
           }
           evaluation_stack[evaluation_stack_len++] = (Token_t){ .type = TOKEN_NUM, .value = ans };
