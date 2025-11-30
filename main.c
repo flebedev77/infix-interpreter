@@ -9,7 +9,6 @@
 #include <termios.h>
 
 // As found in the termios man page - (The read buffer will only accept 4095 chars)
-// No reason to set these constants to anything else
 #define PROMPT_SIZE 4095
 #define OUTPUT_SIZE 4095
 #define PROMPT_HISTORY_SIZE 20
@@ -431,6 +430,8 @@ void evaluate_tokens(char* output) { // Shunting Yard Algorithm
 
         } else if (tokencmp("sin", *token)) { return_val = sin(deg_to_rad(arg));
         } else if (tokencmp("cos", *token)) { return_val = cos(deg_to_rad(arg));
+        } else if (tokencmp("tan", *token)) { return_val = tan(deg_to_rad(arg));
+        } else if (tokencmp("atan", *token)) { return_val = atan(deg_to_rad(arg));
         } else if (tokencmp("deg", *token)) { return_val = rad_to_deg(arg);
         } else if (tokencmp("rad", *token)) { return_val = deg_to_rad(arg);
         } else if (tokencmp("fah", *token)) { return_val = cel_to_fah(arg);
@@ -438,13 +439,25 @@ void evaluate_tokens(char* output) { // Shunting Yard Algorithm
         } else if (tokencmp("hex", *token)) { output_type = OUTPUT_HEX; return_val = arg;
         } else if (tokencmp("dec", *token)) { output_type = OUTPUT_DEC; return_val = arg;
         } else if (tokencmp("bin", *token)) { output_type = OUTPUT_BIN; return_val = arg;
+        } else if (tokencmp("round", *token)) { return_val = round(arg);
+        } else if (tokencmp("floor", *token)) { return_val = floor(arg);
+        } else if (tokencmp("ceil", *token)) { return_val = ceil(arg);
+        } else if (tokencmp("abs", *token)) { return_val = fabs(arg);
         } else {
           SYNTAX_ERROR("Unknown function or command");
         }
 
         evaluation_stack[evaluation_stack_len++] = return_val;
       } else {
+        if (token->type == TOKEN_SUB) {
+          if (evaluation_stack_len < 1) SYNTAX_ERROR("Negative numbers expect a numeric literal");
+          else if (evaluation_stack_len == 1) {
+            evaluation_stack[evaluation_stack_len-1] = -evaluation_stack[evaluation_stack_len-1];
+            continue;
+          }
+        }
         if (evaluation_stack_len < 2) SYNTAX_ERROR("Infix expression expected left and right number literal");
+
         double b = evaluation_stack[--evaluation_stack_len];
         double a = evaluation_stack[--evaluation_stack_len];
         double ans = 0.0;
@@ -470,6 +483,14 @@ void evaluate_tokens(char* output) { // Shunting Yard Algorithm
   }
 
   if (evaluation_stack_len != 1) SYNTAX_ERROR("Unfinished expression");
+
+  if (debug) {
+    printf("\nEVALUATION STACK %d\n", evaluation_stack_len);
+    for (int i = 0; i < evaluation_stack_len; i++) {
+      printf("%0.3f\n", evaluation_stack[i]);
+    }
+    printf("\n");
+  }
 
   switch (output_type) {
     case OUTPUT_DEC: snprintf(output, OUTPUT_SIZE, "%0.3f", evaluation_stack[0]); break;
@@ -506,7 +527,6 @@ void handle_keyboard(char* prompt, char* prompt_history, int current_history_ind
       write(STDOUT_FILENO, "\n", 1);
       break;
     }
-    if (debug) printf("%d ", c);
     if (c == 127 && i > 0) { // Backspace
       // printf("\r\033[%dC", i + 2);
       prompt[--i] = 0;
@@ -538,12 +558,14 @@ void handle_keyboard(char* prompt, char* prompt_history, int current_history_ind
               current_history_index--;
             }
             memcpy(prompt, &prompt_history[current_history_index * PROMPT_SIZE], PROMPT_SIZE);
+            i = strlen(prompt);
             printf("\033[2K\r%s%s", PROMPT_STRING, prompt);
             break; //up
           case 'B':
             if (current_history_index < initial_history_ind-1) {
               current_history_index++;
               memcpy(prompt, &prompt_history[current_history_index * PROMPT_SIZE], PROMPT_SIZE);
+              i = strlen(prompt);
             } else {
               memset(prompt, 0, PROMPT_SIZE);
             }
