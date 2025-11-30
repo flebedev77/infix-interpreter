@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <string.h>
 #include <math.h>
 
@@ -11,6 +12,7 @@
 // As found in the termios man page - (The read buffer will only accept 4095 chars)
 #define PROMPT_SIZE 4095
 #define OUTPUT_SIZE 4095
+#define STRING_STORAGE_SIZE 4095
 #define PROMPT_HISTORY_SIZE 20
 #define PROMPT_STRING "> "
 
@@ -159,7 +161,6 @@ bool is_operator_token(enum TokenType type) {
 
 int get_operator_token_precedence(enum TokenType type) {
   switch (type) {
-    case TOKEN_STR: return 1;
     case TOKEN_SUB: return 1;
     case TOKEN_ADD: return 1;
     case TOKEN_MUL: return 2;
@@ -318,7 +319,7 @@ void tokenise(char* str) {
 
       if (current_token_type == TOKEN_STR && c == string_enter_character) {
         eot = true;
-        if (debug) printf(" ln = %d ", token_len);
+        if (debug) printf("ln = %d ", token_len);
       }
 
       current_token_type = TOKEN_STR;
@@ -386,6 +387,7 @@ void tokenise(char* str) {
   if (debug) printf("\n");
 }
 
+static char* evaluation_string_storage = NULL;
 
 void evaluate_tokens(char* output) { // Shunting Yard Algorithm
   if (debug) printf("PARSER\n"); 
@@ -398,7 +400,7 @@ void evaluate_tokens(char* output) { // Shunting Yard Algorithm
   for (int i = 0; i < tokens_len; i++) {
     Token_t* token = &tokens[i];
 
-    if (token->type == TOKEN_NUM) {
+    if (token->type == TOKEN_NUM || token->type == TOKEN_STR) {
       output_queue[output_queue_len++] = token;
     } else if (is_operator_token(token->type)) {
       if (operator_stack_len > 0) {
@@ -433,18 +435,21 @@ void evaluate_tokens(char* output) { // Shunting Yard Algorithm
   }
 
   enum OutputType output_type = OUTPUT_DEC;
-  double evaluation_stack[PROMPT_SIZE] = {0};
+  Token_t evaluation_stack[PROMPT_SIZE] = {0};
   int evaluation_stack_len = 0;
+
+  // memset(evaluation_string_storage, 0, STRING_STORAGE_SIZE);
+  int string_storage_len = 0;
 
   for (int i = 0; i < output_queue_len; i++) {
     Token_t* token = output_queue[i];
 
-    if (token->type == TOKEN_NUM) {
-      evaluation_stack[evaluation_stack_len++] = token->value;
+    if (token->type == TOKEN_NUM || token->type == TOKEN_STR) {
+      evaluation_stack[evaluation_stack_len++] = *token;
     } else if (is_operator_token(token->type)) {
       if (token->type == TOKEN_COMMAND) {
         bool has_arg = (evaluation_stack_len > 0); 
-        double arg = has_arg ? evaluation_stack[--evaluation_stack_len] : -1.0;
+        double arg = has_arg ? evaluation_stack[--evaluation_stack_len].value : -1.0;
         double return_val = 0.0;
         if (tokencmp("exit", *token)) {
           exit((has_arg) ? (int)arg : 0);
@@ -475,35 +480,53 @@ void evaluate_tokens(char* output) { // Shunting Yard Algorithm
           SYNTAX_ERROR("Unknown function or command");
         }
 
-        evaluation_stack[evaluation_stack_len++] = return_val;
+        evaluation_stack[evaluation_stack_len++] = (Token_t){ .type = TOKEN_NUM, .value = return_val };
       } else {
         if (token->type == TOKEN_SUB) {
           if (evaluation_stack_len < 1) SYNTAX_ERROR("Negative numbers expect a numeric literal");
           else if (evaluation_stack_len == 1) {
-            evaluation_stack[evaluation_stack_len-1] = -evaluation_stack[evaluation_stack_len-1];
+            evaluation_stack[evaluation_stack_len-1].value = -evaluation_stack[evaluation_stack_len-1].value;
             continue;
           }
         }
         if (evaluation_stack_len < 2) SYNTAX_ERROR("Infix expression expected left and right number literal");
 
-        double b = evaluation_stack[--evaluation_stack_len];
-        double a = evaluation_stack[--evaluation_stack_len];
-        double ans = 0.0;
+        Token_t b = evaluation_stack[--evaluation_stack_len];
+        Token_t a = evaluation_stack[--evaluation_stack_len];
 
-        if (debug) printf("%0.2f %0.2f\n", a, b);
+        if (a.type == TOKEN_NUM && b.type == TOKEN_NUM) {
+          double ans = 0.0;
 
-        switch (token->type) {
-          case TOKEN_MUL: ans = a * b; break;
-          case TOKEN_DIV: ans = a / b; break;
-          case TOKEN_ADD: ans = a + b; break;
-          case TOKEN_SUB: ans = a - b; break;
-          case TOKEN_POW: ans = pow(a, b); break;
-          case TOKEN_REM: ans = (int)a % (int)b; break;
-          case TOKEN_BSL: ans = (int)a << (int)b; break;
-          case TOKEN_BSR: ans = (int)a >> (int)b; break;
-          default: SYNTAX_ERROR("Operator not implemented");
+          if (debug) printf("%0.2f %0.2f\n", a.value, b.value);
+
+          switch (token->type) {
+            case TOKEN_MUL: ans = a.value * b.value; break;
+            case TOKEN_DIV: ans = a.value / b.value; break;
+            case TOKEN_ADD: ans = a.value + b.value; break;
+            case TOKEN_SUB: ans = a.value - b.value; break;
+            case TOKEN_POW: ans = pow(a.value, b.value); break;
+            case TOKEN_REM: ans = (int)a.value % (int)b.value; break;
+            case TOKEN_BSL: ans = (int)a.value << (int)b.value; break;
+            case TOKEN_BSR: ans = (int)a.value >> (int)b.value; break;
+            default: SYNTAX_ERROR("Operator not implemented");
+          }
+          evaluation_stack[evaluation_stack_len++] = (Token_t){ .type = TOKEN_NUM, .value = ans };
+        } else if (a.type == TOKEN_STR && b.type == TOKEN_STR) {
+          switch (token->type) {
+            case TOKEN_ADD:
+              int str_begin = string_storage_len;
+              memcpy(&evaluation_string_storage[string_storage_len], a.str, a.str_len);
+              string_storage_len += a.str_len;
+              memcpy(&evaluation_string_storage[string_storage_len], b.str, b.str_len);
+              string_storage_len += b.str_len;
+              evaluation_stack[evaluation_stack_len++] = (Token_t){ .type = TOKEN_STR, .str = &evaluation_string_storage[str_begin], .str_len = a.str_len + b.str_len };
+              break;
+            default: SYNTAX_ERROR("Operator not permitted on string");
+          }
+        } else { // TODO support string and number operations
+          SYNTAX_ERROR("Type mismatch");
         }
-        evaluation_stack[evaluation_stack_len++] = ans;
+
       }
     } else {
       SYNTAX_ERROR("Unhandled token. How did this happen?");
@@ -515,17 +538,25 @@ void evaluate_tokens(char* output) { // Shunting Yard Algorithm
   if (debug) {
     printf("\nEVALUATION STACK %d\n", evaluation_stack_len);
     for (int i = 0; i < evaluation_stack_len; i++) {
-      printf("%0.3f\n", evaluation_stack[i]);
+      printf("%0.3f\n", evaluation_stack[i].value);
     }
     printf("\n");
   }
 
-  switch (output_type) {
-    case OUTPUT_DEC: snprintf(output, OUTPUT_SIZE, "%0.3f", evaluation_stack[0]); break;
-    case OUTPUT_HEX: snprintf(output, OUTPUT_SIZE, "0x%X", (int)evaluation_stack[0]); break;
-    case OUTPUT_BIN: snprintf(output, OUTPUT_SIZE, "0b%b", (int)evaluation_stack[0]); break;
-    default: SYNTAX_ERROR("Unknown output type");
+  if (evaluation_stack[0].type == TOKEN_STR) {
+    for (int i = 0; i < evaluation_stack[0].str_len; i++) {
+      if (i > OUTPUT_SIZE) break;
+      output[i] = evaluation_stack[0].str[i];
+    }
+  } else {
+    switch (output_type) {
+      case OUTPUT_DEC: snprintf(output, OUTPUT_SIZE, "%0.3f", evaluation_stack[0].value); break;
+      case OUTPUT_HEX: snprintf(output, OUTPUT_SIZE, "0x%X", (int)evaluation_stack[0].value); break;
+      case OUTPUT_BIN: snprintf(output, OUTPUT_SIZE, "0b%b", (int)evaluation_stack[0].value); break;
+      default: SYNTAX_ERROR("Unknown output type");
+    }
   }
+
 }
 
 struct termios original_spec = {0};
@@ -619,6 +650,14 @@ int main() {
     printf("Error allocating memory for prompt history, it will be disabled\n");
   }
 
+
+  evaluation_string_storage = (char*)malloc(sizeof(char) * STRING_STORAGE_SIZE);
+  if (evaluation_string_storage == NULL) {
+    printf("Failed allocating %d bytes\n", STRING_STORAGE_SIZE);
+    if (prompt_storage != NULL) free(prompt_storage);
+    return 1;
+  }
+
 #ifndef DEBUG
   setup_terminal();
 #endif
@@ -646,4 +685,7 @@ int main() {
     printf("%s\n", output);
     fflush(stdout);
   }
+
+  free(prompt_storage);
+  free(evaluation_string_storage);
 }
