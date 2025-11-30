@@ -110,9 +110,6 @@ bool is_operator(char c) {
   }
   return false;
 }
-bool is_alphabetic(char c) {
-  return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '_' || c == '#';
-}
 bool is_bracket(char c) {
   switch (c) {
     case '{': return true;
@@ -124,6 +121,9 @@ bool is_bracket(char c) {
     default: return false;
   }
   return false;
+}
+bool is_alphabetic(char c) {
+  return (!is_number(c) && !is_operator(c) && !is_bracket(c) && c != ' ' && c != '"' && c != '\'');
 }
 
 enum OutputType {
@@ -137,18 +137,19 @@ enum OutputType {
 
 enum TokenType {
   TOKEN_NULL = 0,
-  TOKEN_NUM = 1,
-  TOKEN_MUL = 2,
-  TOKEN_ADD = 3,
-  TOKEN_SUB = 4,
-  TOKEN_DIV = 5,
-  TOKEN_POW = 6,
-  TOKEN_REM = 7,
-  TOKEN_BSL = 8,
-  TOKEN_BSR = 9,
-  TOKEN_COMMAND = 10,
-  TOKEN_LPAREN = 11,
-  TOKEN_RPAREN = 12
+  TOKEN_STR = 1,
+  TOKEN_NUM = 2,
+  TOKEN_MUL = 3,
+  TOKEN_ADD = 4,
+  TOKEN_SUB = 5,
+  TOKEN_DIV = 6,
+  TOKEN_POW = 7,
+  TOKEN_REM = 8,
+  TOKEN_BSL = 9,
+  TOKEN_BSR = 10,
+  TOKEN_COMMAND = 11,
+  TOKEN_LPAREN = 12,
+  TOKEN_RPAREN = 13
 };
 
 bool is_operator_token(enum TokenType type) {
@@ -158,6 +159,7 @@ bool is_operator_token(enum TokenType type) {
 
 int get_operator_token_precedence(enum TokenType type) {
   switch (type) {
+    case TOKEN_STR: return 1;
     case TOKEN_SUB: return 1;
     case TOKEN_ADD: return 1;
     case TOKEN_MUL: return 2;
@@ -220,6 +222,7 @@ void print_token(Token_t token) {
     case TOKEN_LPAREN: printf("TOKEN_LPAREN "); break;
     case TOKEN_RPAREN: printf("TOKEN_RPAREN "); break;
     case TOKEN_COMMAND: printf("TOKEN_COMMAND "); break;
+    case TOKEN_STR: printf("TOKEN_STR "); break;
     case TOKEN_NULL: printf("TOKEN_NULL "); break;
     default: printf("TOKEN_UNKNOWN "); break;
   }
@@ -251,9 +254,15 @@ bool tokencmp(const char* str, Token_t token) {
   return true;
 }
 
-bool debug = false;
+bool debug = true;
 static Token_t tokens[PROMPT_SIZE] = {0};
 static int tokens_len = 0;
+
+enum TokeniserState {
+  TOKENISER_NUMERIC,
+  TOKENISER_HEXADECIMAL,
+  TOKENISER_BINARY
+};
 
 void tokenise(char* str) {
   if (debug) printf("TOKENISER\n");
@@ -266,44 +275,63 @@ void tokenise(char* str) {
   int token_len = 0;
 
   enum TokenType current_token_type = TOKEN_NULL;
-  bool currently_hex = false,
-       currently_binary = false;
+  enum TokeniserState current_state = TOKENISER_NUMERIC;
+  char string_enter_character = 0;
 
   for (int i = 0; i < str_len; i++) {
     char c = str[i];
     char nc = (i+1 < str_len) ? str[i+1] : 0;
-    bool eot = (nc == ' ' || nc == 0);
+    bool eot = ((current_token_type != TOKEN_STR && nc == ' ') || nc == 0);
 
     if (c == ' ') {
-      token_begin++;
+      if (current_token_type == TOKEN_STR) token_len++;
+      else token_begin++;
     }
 
     if (is_operator(c) || is_bracket(c)) {
-      current_token_type = get_char_token_type(c);
-      eot = true;
       token_len++;
+      if (current_token_type != TOKEN_STR) {
+        current_token_type = get_char_token_type(c);
+        eot = true;
 
-      if ((current_token_type == TOKEN_BSL || current_token_type == TOKEN_BSR) &&
-          get_char_token_type(nc) == current_token_type)
-        eot = false; 
+        if ((current_token_type == TOKEN_BSL || current_token_type == TOKEN_BSR) &&
+            get_char_token_type(nc) == current_token_type)
+          eot = false; 
+      }
     }
 
     if (is_alphabetic(c)) {
-      current_token_type = TOKEN_COMMAND;
       token_len++;
+      if (current_token_type != TOKEN_STR) current_token_type = TOKEN_COMMAND;
     }
 
     if (is_number(c)) {
-      current_token_type = TOKEN_NUM;
+      token_len++;
+      if (current_token_type != TOKEN_STR) current_token_type = TOKEN_NUM;
+    }
+
+    if (c == '"' || c == '\'') {
+      if (current_token_type != TOKEN_STR) string_enter_character = c;
+
+      if (c == string_enter_character)
+        if (debug) printf("%s %d ", (current_token_type == TOKEN_STR) ? "end" : "start", i);
+
+      if (current_token_type == TOKEN_STR && c == string_enter_character) {
+        eot = true;
+        if (debug) printf(" ln = %d ", token_len);
+      }
+
+      current_token_type = TOKEN_STR;
       token_len++;
     }
 
-    if (current_token_type != get_char_token_type(nc)) {
+    if (current_token_type != get_char_token_type(nc) && current_token_type != TOKEN_STR) {
       eot = true;
-      if ((currently_hex || currently_binary) && (get_char_token_type(nc) == TOKEN_NUM || get_char_token_type(nc) == TOKEN_COMMAND)) eot = false;
+      if ((current_state == TOKENISER_HEXADECIMAL || current_state == TOKENISER_BINARY) &&
+          (get_char_token_type(nc) == TOKEN_NUM || get_char_token_type(nc) == TOKEN_COMMAND)) eot = false;
       if (current_token_type == TOKEN_NUM && token_begin[0] == '0' && get_char_token_type(nc) == TOKEN_COMMAND) {
-        if (nc == 'x') currently_hex = true;
-        else if (nc == 'b') currently_binary = true;
+        if (nc == 'x') current_state = TOKENISER_HEXADECIMAL;
+        else if (nc == 'b') current_state = TOKENISER_BINARY;
         eot = false;
       }
     }
@@ -317,10 +345,10 @@ void tokenise(char* str) {
         value = atof(buf);
       }
 
-      if (currently_hex) {
+      if (current_state == TOKENISER_HEXADECIMAL) {
         value = (double)hex_to_int(token_begin, token_len);
         current_token_type = TOKEN_NUM;
-      } else if (currently_binary) {
+      } else if (current_state == TOKENISER_BINARY) {
         value = (double)bin_to_int(token_begin, token_len);
         current_token_type = TOKEN_NUM;
       }
@@ -328,13 +356,13 @@ void tokenise(char* str) {
       tokens[tokens_len++] = (Token_t) {
         .type = current_token_type,
           .value = value,
-          .str = token_begin,
-          .str_len = token_len,
+          .str = (current_token_type == TOKEN_STR) ? token_begin+1 : token_begin,
+          .str_len = (current_token_type == TOKEN_STR) ? token_len-2 : token_len,
           .precedence = get_operator_token_precedence(current_token_type)
       };
+      string_enter_character = 0;
       current_token_type = TOKEN_NULL;
-      currently_hex = false;
-      currently_binary = false;
+      current_state = TOKENISER_NUMERIC;
       token_begin += token_len;
       token_len = 0;
 
@@ -591,7 +619,9 @@ int main() {
     printf("Error allocating memory for prompt history, it will be disabled\n");
   }
 
+#ifndef DEBUG
   setup_terminal();
+#endif
 
   while (1) {
     printf("\r%s", PROMPT_STRING);
@@ -599,12 +629,16 @@ int main() {
     char prompt[PROMPT_SIZE] = {0};
     char output[OUTPUT_SIZE] = {0};
 
+#ifndef DEBUG
     handle_keyboard(prompt, prompt_storage, prompt_storage_index);
     // TODO: avoid this copy by storing the actual prompt as a part in the history memory
     memcpy(&prompt_storage[prompt_storage_index * PROMPT_SIZE], prompt, PROMPT_SIZE);
     prompt_storage_index = (prompt_storage_index + 1) % PROMPT_HISTORY_SIZE;
-    // fgets(prompt, PROMPT_SIZE, stdin);
-    // prompt[strlen(prompt)-1] = 0;
+#endif
+#ifdef DEBUG
+    fgets(prompt, PROMPT_SIZE, stdin);
+    prompt[strlen(prompt)-1] = 0;
+#endif
 
     tokenise(prompt);
     evaluate_tokens(output);
