@@ -325,6 +325,7 @@ void tokenise(char* str) {
       if (c == string_enter_character)
         if (debug) printf("%s %d ", (current_token_type == TOKEN_STR) ? "end" : "start", i);
 
+      eot = false;
       if (current_token_type == TOKEN_STR && c == string_enter_character) {
         eot = true;
         if (debug) printf("ln = %d ", token_len);
