@@ -255,6 +255,14 @@ bool tokencmp(const char* str, Token_t token) {
   return true;
 }
 
+double string_token_to_char_code(Token_t* token) {
+  if (token->type == TOKEN_STR) {
+    token->type = TOKEN_NUM;
+    token->value = (double)token->str[0];
+  }
+  return token->value;
+}
+
 bool debug = true;
 static Token_t tokens[PROMPT_SIZE] = {0};
 static int tokens_len = 0;
@@ -449,33 +457,34 @@ void evaluate_tokens(char* output) { // Shunting Yard Algorithm
     } else if (is_operator_token(token->type)) {
       if (token->type == TOKEN_COMMAND) {
         bool has_arg = (evaluation_stack_len > 0); 
-        double arg = has_arg ? evaluation_stack[--evaluation_stack_len].value : -1.0;
+        Token_t arg = has_arg ? evaluation_stack[--evaluation_stack_len] : (Token_t){0};
         double return_val = 0.0;
         if (tokencmp("exit", *token)) {
-          exit((has_arg) ? (int)arg : 0);
+          exit((has_arg) ? (int)arg.value : 0);
           return_val = -1;
-        } else if (tokencmp("help", *token)) { print_help((arg == 1));
+        } else if (tokencmp("help", *token)) { print_help((arg.value == 1));
         } else if (tokencmp("debug", *token)) {
-          if (arg >= 1) debug = true;
+          if (arg.value >= 1) debug = true;
           else debug = false;
-          if (debug) printf("%0.2f %b\n", arg, debug);
+          if (debug) printf("%0.2f %b\n", arg.value, debug);
           return_val = (double)debug;
 
-        } else if (tokencmp("sin", *token)) { return_val = sin(deg_to_rad(arg));
-        } else if (tokencmp("cos", *token)) { return_val = cos(deg_to_rad(arg));
-        } else if (tokencmp("tan", *token)) { return_val = tan(deg_to_rad(arg));
-        } else if (tokencmp("atan", *token)) { return_val = atan(deg_to_rad(arg));
-        } else if (tokencmp("deg", *token)) { return_val = rad_to_deg(arg);
-        } else if (tokencmp("rad", *token)) { return_val = deg_to_rad(arg);
-        } else if (tokencmp("fah", *token)) { return_val = cel_to_fah(arg);
-        } else if (tokencmp("cel", *token)) { return_val = fah_to_cel(arg);
-        } else if (tokencmp("hex", *token)) { output_type = OUTPUT_HEX; return_val = arg;
-        } else if (tokencmp("dec", *token)) { output_type = OUTPUT_DEC; return_val = arg;
-        } else if (tokencmp("bin", *token)) { output_type = OUTPUT_BIN; return_val = arg;
-        } else if (tokencmp("round", *token)) { return_val = round(arg);
-        } else if (tokencmp("floor", *token)) { return_val = floor(arg);
-        } else if (tokencmp("ceil", *token)) { return_val = ceil(arg);
-        } else if (tokencmp("abs", *token)) { return_val = fabs(arg);
+        } else if (tokencmp("sin", *token)) { return_val = sin(deg_to_rad(arg.value));
+        } else if (tokencmp("cos", *token)) { return_val = cos(deg_to_rad(arg.value));
+        } else if (tokencmp("tan", *token)) { return_val = tan(deg_to_rad(arg.value));
+        } else if (tokencmp("atan", *token)) { return_val = atan(deg_to_rad(arg.value));
+        } else if (tokencmp("deg", *token)) { return_val = rad_to_deg(arg.value);
+        } else if (tokencmp("rad", *token)) { return_val = deg_to_rad(arg.value);
+        } else if (tokencmp("fah", *token)) { return_val = cel_to_fah(arg.value);
+        } else if (tokencmp("cel", *token)) { return_val = fah_to_cel(arg.value);
+        } else if (tokencmp("hex", *token)) { output_type = OUTPUT_HEX; return_val = string_token_to_char_code(&arg);
+        } else if (tokencmp("dec", *token)) { output_type = OUTPUT_DEC; return_val = string_token_to_char_code(&arg);
+        } else if (tokencmp("bin", *token)) { output_type = OUTPUT_BIN; return_val = string_token_to_char_code(&arg); 
+        } else if (tokencmp("round", *token)) { return_val = round(arg.value);
+        } else if (tokencmp("floor", *token)) { return_val = floor(arg.value);
+        } else if (tokencmp("ceil", *token)) { return_val = ceil(arg.value);
+        } else if (tokencmp("abs", *token)) { return_val = fabs(arg.value);
+        } else if (tokencmp("len", *token)) { return_val = arg.str_len;
         } else {
           SYNTAX_ERROR("Unknown function or command");
         }
