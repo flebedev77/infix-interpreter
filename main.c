@@ -149,13 +149,14 @@ enum TokenType {
   TOKEN_REM = 8,
   TOKEN_BSL = 9,
   TOKEN_BSR = 10,
-  TOKEN_COMMAND = 11,
-  TOKEN_LPAREN = 12,
-  TOKEN_RPAREN = 13
+  TOKEN_NOT = 11,
+  TOKEN_COMMAND = 12,
+  TOKEN_LPAREN = 13,
+  TOKEN_RPAREN = 14
 };
 
 bool is_operator_token(enum TokenType type) {
-  if (type >= 2 && type <= TOKEN_COMMAND) return true;
+  if (type >= 3 && type <= TOKEN_COMMAND) return true;
   return false;
 }
 
@@ -176,6 +177,7 @@ int get_operator_token_precedence(enum TokenType type) {
 }
 
 enum TokenType get_char_token_type(char c) {
+  if (c == 0) return TOKEN_NULL;
   if (is_number(c)) return TOKEN_NUM;
   if (is_alphabetic(c)) return TOKEN_COMMAND;
 
@@ -190,6 +192,7 @@ enum TokenType get_char_token_type(char c) {
     case '%': return TOKEN_REM;
     case '<': return TOKEN_BSL;
     case '>': return TOKEN_BSR;
+    case '!': return TOKEN_NOT;
   }
 
   return TOKEN_NULL;
@@ -220,6 +223,7 @@ void print_token(Token_t token) {
     case TOKEN_REM: printf("TOKEN_REM "); break;
     case TOKEN_BSL: printf("TOKEN_BSL "); break;
     case TOKEN_BSR: printf("TOKEN_BSR "); break;
+    case TOKEN_NOT: printf("TOKEN_NOT "); break;
     case TOKEN_LPAREN: printf("TOKEN_LPAREN "); break;
     case TOKEN_RPAREN: printf("TOKEN_RPAREN "); break;
     case TOKEN_COMMAND: printf("TOKEN_COMMAND "); break;
@@ -492,10 +496,18 @@ void evaluate_tokens(char* output) { // Shunting Yard Algorithm
 
         evaluation_stack[evaluation_stack_len++] = (Token_t){ .type = TOKEN_NUM, .value = return_val };
       } else {
-        if (token->type == TOKEN_SUB) {
-          if (evaluation_stack_len < 1) SYNTAX_ERROR("Negative numbers expect a numeric literal");
+        if (token->type == TOKEN_SUB || token->type == TOKEN_NOT) {
+          if (evaluation_stack_len < 1) SYNTAX_ERROR("Negative or inversed numbers expect a numeric literal");
           else if (evaluation_stack_len == 1) {
-            evaluation_stack[evaluation_stack_len-1].value = -evaluation_stack[evaluation_stack_len-1].value;
+            switch(token->type) {
+              case TOKEN_SUB: 
+                evaluation_stack[evaluation_stack_len-1].value = -evaluation_stack[evaluation_stack_len-1].value;
+                break;
+              case TOKEN_NOT:
+                evaluation_stack[evaluation_stack_len-1].value = !evaluation_stack[evaluation_stack_len-1].value;
+                break;
+              default: break;
+            }
             continue;
           }
         }
