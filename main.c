@@ -108,6 +108,10 @@ bool is_operator(char c) {
     case '<': return true;
     case '>': return true;
     case '=': return true;
+    case '&': return true;
+    case '|': return true;
+    case '~': return true;
+    case '#': return true;
     default: return false;
   }
   return false;
@@ -150,10 +154,14 @@ enum TokenType {
   TOKEN_REM = 9,
   TOKEN_BSL = 10,
   TOKEN_BSR = 11,
-  TOKEN_NOT = 12,
-  TOKEN_COMMAND = 13,
-  TOKEN_LPAREN = 14,
-  TOKEN_RPAREN = 15
+  TOKEN_BOR = 12,
+  TOKEN_BAND = 13,
+  TOKEN_BNOT = 14,
+  TOKEN_BXOR = 15,
+  TOKEN_NOT = 16,
+  TOKEN_COMMAND = 17,
+  TOKEN_LPAREN = 18,
+  TOKEN_RPAREN = 19
 };
 
 bool is_operator_token(enum TokenType type) {
@@ -164,13 +172,17 @@ bool is_operator_token(enum TokenType type) {
 int get_operator_token_precedence(enum TokenType type) {
   switch (type) {
     case TOKEN_EQU: return 0;
+    case TOKEN_ADD: return 0;
     case TOKEN_SUB: return 1;
-    case TOKEN_ADD: return 1;
     case TOKEN_MUL: return 2;
     case TOKEN_DIV: return 2;
     case TOKEN_POW: return 3;
     case TOKEN_BSR: return 4;
     case TOKEN_BSL: return 4;
+    case TOKEN_BOR: return 4;
+    case TOKEN_BAND: return 4;
+    case TOKEN_BNOT: return 4;
+    case TOKEN_BXOR: return 4;
     case TOKEN_COMMAND: return 5;
     case TOKEN_LPAREN: return 6;
     case TOKEN_RPAREN: return 6;
@@ -196,6 +208,10 @@ enum TokenType get_char_token_type(char c) {
     case '>': return TOKEN_BSR;
     case '!': return TOKEN_NOT;
     case '=': return TOKEN_EQU;
+    case '&': return TOKEN_BAND;
+    case '|': return TOKEN_BOR;
+    case '~': return TOKEN_BNOT;
+    case '#': return TOKEN_BXOR;
   }
 
   return TOKEN_NULL;
@@ -228,6 +244,10 @@ void print_token(Token_t token) {
     case TOKEN_BSR: printf("TOKEN_BSR "); break;
     case TOKEN_NOT: printf("TOKEN_NOT "); break;
     case TOKEN_EQU: printf("TOKEN_EQU "); break;
+    case TOKEN_BAND: printf("TOKEN_BAND "); break;
+    case TOKEN_BOR:  printf("TOKEN_BOR "); break;
+    case TOKEN_BNOT: printf("TOKEN_BNOT "); break;
+    case TOKEN_BXOR: printf("TOKEN_BXOR "); break;
     case TOKEN_LPAREN: printf("TOKEN_LPAREN "); break;
     case TOKEN_RPAREN: printf("TOKEN_RPAREN "); break;
     case TOKEN_COMMAND: printf("TOKEN_COMMAND "); break;
@@ -238,7 +258,7 @@ void print_token(Token_t token) {
   for (int j = 0; j < token.str_len; j++) {
     putchar(token.str[j]);
   }
-  putchar('\n');
+  printf(" %0.2f\n", token.value);
 }
 
 void print_help(bool advanced) {
@@ -505,15 +525,20 @@ void evaluate_tokens(char* output) { // Shunting Yard Algorithm
           evaluation_stack[evaluation_stack_len++] = (Token_t){ .type = TOKEN_STR, .str = &evaluation_string_storage[string_storage_len-1], .str_len = 1 };
         } else evaluation_stack[evaluation_stack_len++] = (Token_t){ .type = TOKEN_NUM, .value = return_val };
       } else {
-        if (token->type == TOKEN_SUB || token->type == TOKEN_NOT) {
+        if (token->type == TOKEN_SUB ||
+            token->type == TOKEN_NOT ||
+            token->type == TOKEN_BNOT) {
           if (evaluation_stack_len < 1) SYNTAX_ERROR("Negative or inversed numbers expect a numeric literal");
-          else if (evaluation_stack_len == 1) {
+          if (evaluation_stack_len == 1) {
             switch(token->type) {
               case TOKEN_SUB: 
                 evaluation_stack[evaluation_stack_len-1].value = -evaluation_stack[evaluation_stack_len-1].value;
                 break;
               case TOKEN_NOT:
                 evaluation_stack[evaluation_stack_len-1].value = !evaluation_stack[evaluation_stack_len-1].value;
+                break;
+              case TOKEN_BNOT:
+                evaluation_stack[evaluation_stack_len-1].value = ~((int)evaluation_stack[evaluation_stack_len-1].value);
                 break;
               default: break;
             }
@@ -540,6 +565,9 @@ void evaluate_tokens(char* output) { // Shunting Yard Algorithm
             case TOKEN_BSL: ans = (int)a.value << (int)b.value; break;
             case TOKEN_BSR: ans = (int)a.value >> (int)b.value; break;
             case TOKEN_EQU: ans = (a.value == b.value); break;
+            case TOKEN_BOR: ans = (int)a.value | (int)b.value; break;
+            case TOKEN_BAND: ans = (int)a.value & (int)b.value; break;
+            case TOKEN_BXOR: ans = (int)a.value ^ (int)b.value; break;
             default: SYNTAX_ERROR("Operator not implemented");
           }
           evaluation_stack[evaluation_stack_len++] = (Token_t){ .type = TOKEN_NUM, .value = ans };
