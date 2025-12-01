@@ -7,6 +7,7 @@ A calculator in the terminal, similar to just running the python or node interpr
  - Aliases for constants (true, false and PI)
  - Expression history with up arrow and down arrow
  - Common operators like bit shifting, remainder, etc
+ - Bitwise operators same as C but ^ is an exponent operator, # is xor eg 0b10101#0b011011
  - Strings and chars. Can be provided as arguments to functions, eg `len("Hello, world") // expected output: 12`
  - Constant functions
 
