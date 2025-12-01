@@ -143,6 +143,7 @@ enum OutputType {
 
 enum TokenType {
   TOKEN_NULL = 0,
+  TOKEN_NEG = 20,
   TOKEN_STR = 1,
   TOKEN_EQU = 2,
   TOKEN_NUM = 3,
@@ -165,13 +166,14 @@ enum TokenType {
 };
 
 bool is_operator_token(enum TokenType type) {
-  if (type >= 4 && type <= TOKEN_COMMAND || type == TOKEN_EQU) return true;
+  if (type >= 4 && type <= TOKEN_COMMAND || type == TOKEN_EQU || type == TOKEN_NEG) return true;
   return false;
 }
 
 int get_operator_token_precedence(enum TokenType type) {
   switch (type) {
     case TOKEN_EQU: return 0;
+    case TOKEN_NEG: return 4;
     case TOKEN_ADD: return 0;
     case TOKEN_SUB: return 1;
     case TOKEN_MUL: return 2;
@@ -237,6 +239,7 @@ void print_token(Token_t token) {
     case TOKEN_MUL: printf("TOKEN_MUL "); break;
     case TOKEN_ADD: printf("TOKEN_ADD "); break;
     case TOKEN_SUB: printf("TOKEN_SUB "); break;
+    case TOKEN_NEG: printf("TOKEN_NEG "); break;
     case TOKEN_DIV: printf("TOKEN_DIV "); break;
     case TOKEN_POW: printf("TOKEN_POW "); break;
     case TOKEN_REM: printf("TOKEN_REM "); break;
@@ -330,6 +333,17 @@ void tokenise(char* str) {
       if (current_token_type != TOKEN_STR) {
         current_token_type = get_char_token_type(c);
         eot = true;
+
+        if (current_token_type == TOKEN_SUB && !is_operator(get_char_token_type(nc))) {
+          if (tokens_len < 1 || (tokens_len > 0 && tokens[tokens_len-1].type != TOKEN_NUM)) {
+            if (get_char_token_type(nc) == TOKEN_NUM) {
+              current_token_type = TOKEN_NUM;
+              eot = false;
+            } else {
+              current_token_type = TOKEN_NEG;
+            }
+          }
+        }
 
         if ((current_token_type == TOKEN_BSL || current_token_type == TOKEN_BSR) &&
             get_char_token_type(nc) == current_token_type)
@@ -525,13 +539,13 @@ void evaluate_tokens(char* output) { // Shunting Yard Algorithm
           evaluation_stack[evaluation_stack_len++] = (Token_t){ .type = TOKEN_STR, .str = &evaluation_string_storage[string_storage_len-1], .str_len = 1 };
         } else evaluation_stack[evaluation_stack_len++] = (Token_t){ .type = TOKEN_NUM, .value = return_val };
       } else {
-        if (token->type == TOKEN_SUB ||
+        if (token->type == TOKEN_NEG ||
             token->type == TOKEN_NOT ||
             token->type == TOKEN_BNOT) {
           if (evaluation_stack_len < 1) SYNTAX_ERROR("Negative or inversed numbers expect a numeric literal");
-          if (evaluation_stack_len == 1) {
+          if (evaluation_stack_len >= 1) {
             switch(token->type) {
-              case TOKEN_SUB: 
+              case TOKEN_NEG: 
                 evaluation_stack[evaluation_stack_len-1].value = -evaluation_stack[evaluation_stack_len-1].value;
                 break;
               case TOKEN_NOT:
