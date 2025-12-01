@@ -173,7 +173,6 @@ bool is_operator_token(enum TokenType type) {
 int get_operator_token_precedence(enum TokenType type) {
   switch (type) {
     case TOKEN_EQU: return 0;
-    case TOKEN_NEG: return 4;
     case TOKEN_ADD: return 0;
     case TOKEN_SUB: return 1;
     case TOKEN_MUL: return 2;
@@ -185,9 +184,10 @@ int get_operator_token_precedence(enum TokenType type) {
     case TOKEN_BAND: return 4;
     case TOKEN_BNOT: return 4;
     case TOKEN_BXOR: return 4;
-    case TOKEN_COMMAND: return 5;
-    case TOKEN_LPAREN: return 6;
-    case TOKEN_RPAREN: return 6;
+    case TOKEN_NEG:  return 5;
+    case TOKEN_COMMAND: return 6;
+    case TOKEN_LPAREN:  return 7;
+    case TOKEN_RPAREN:  return 7;
     default: return -1;
   }
 }
