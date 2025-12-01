@@ -1,2 +1,2 @@
 #!/bin/sh
-gcc main.c -o main -g && gf2 ./main
+gcc main.c -o main -g -lm -DDEBUG && gf2 ./main
