@@ -1,3 +1,4 @@
+#include <limits.h>
 #include <stdio.h>
 #include <stdbool.h>
 #include <stdlib.h>
@@ -16,10 +17,77 @@
 #define PROMPT_HISTORY_SIZE 20
 #define PROMPT_STRING "> "
 
+#define STRING_OUTPUT_LEN 300
+
 #define SYNTAX_ERROR(msg) do { \
   fprintf(stderr, "%s:%d SYNTAX ERROR! %s\n\r", __FILE__, __LINE__, msg); \
 } while (0)
 // exit(EXIT_FAILURE); \
+
+
+char* base64_chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+char base64_indices[CHAR_MAX] = {};
+
+void base64_init() {
+  for (int i = 0; i < 64; i++) {
+    base64_indices[base64_chars[i]] = i;
+  }
+}
+
+void base64_encode(const char* input, int input_len, char* buf) { // Highly sophisticated, hyper optimised proprietary base64 encoding algorythm
+  int input_bitlen = input_len * 8;
+  char* input_bits = (char*)malloc(input_bitlen); // TODO somehow avoid this dumb malloc
+  if (input_bits == NULL) exit(1); 
+  int input_bits_len = 0;
+  int input_padding = input_bitlen % 6;
+  int j = 0;
+
+  for (int i = 0; i < input_len; i++) {
+    uint8_t v = input[i];
+    input_bits[input_bits_len++] = (v >> 7) & 1;
+    input_bits[input_bits_len++] = (v >> 6) & 1;
+    input_bits[input_bits_len++] = (v >> 5) & 1;
+    input_bits[input_bits_len++] = (v >> 4) & 1;
+    input_bits[input_bits_len++] = (v >> 3) & 1;
+    input_bits[input_bits_len++] = (v >> 2) & 1;
+    input_bits[input_bits_len++] = (v >> 1) & 1;
+    input_bits[input_bits_len++] = v & 1;
+  }
+  for (int i = 0; i < input_bitlen - input_padding; i += 6) {
+    uint8_t v = (input_bits[i] << 5) | (input_bits[i+1] << 4) | (input_bits[i+2] << 3) | (input_bits[i+3] << 2) | (input_bits[i+4] << 1) | input_bits[i+5];
+    if (j < STRING_OUTPUT_LEN) *buf++ = base64_chars[v];
+    j++;
+  }
+  for (int i = 0; i < input_padding; i++) {
+    if (j < STRING_OUTPUT_LEN) *buf++ = '=';
+  }
+  free(input_bits);
+}
+void base64_decode(const char* input, int input_len, char* buf) {
+  int input_bitlen = input_len * 8;
+  int input_bits_len = 0;
+  int output_padding = input_bitlen % 8;
+
+  char* output_bits = (char*)malloc(input_bitlen * 2); // Base64 increases size by about 30%, being safe here...
+  int output_bits_len = 0;
+  int j = 0;
+  if (output_bits == NULL) exit(1); 
+
+  for (int i = 0; i < input_len; i++) {
+    char byte = base64_indices[input[i]];
+    output_bits[output_bits_len++] = (byte >> 5) & 1;
+    output_bits[output_bits_len++] = (byte >> 4) & 1;
+    output_bits[output_bits_len++] = (byte >> 3) & 1;
+    output_bits[output_bits_len++] = (byte >> 2) & 1;
+    output_bits[output_bits_len++] = (byte >> 1) & 1;
+    output_bits[output_bits_len++] = byte & 1;
+  }
+
+  for (int i = 0; i < output_bits_len; i += 8) {
+    if (j < STRING_OUTPUT_LEN) *buf++ = (output_bits[i] << 7) | (output_bits[i+1] << 6) | (output_bits[i+2] << 5) | (output_bits[i+3] << 4) | (output_bits[i+4] << 3) | (output_bits[i+5] << 2) | (output_bits[i+6] << 1) | output_bits[i+7];
+    j++;
+  }
+}
 
 #define PI 3.141592653589793238462643383279502884197169399375105820974944592307816406286208998628
 double deg_to_rad(double x) { return x * PI/180; }
@@ -294,7 +362,7 @@ double string_token_to_char_code(Token_t* token) {
   return token->value;
 }
 
-bool debug = true;
+bool debug = false;
 static Token_t tokens[PROMPT_SIZE] = {0};
 static int tokens_len = 0;
 
@@ -489,7 +557,6 @@ void evaluate_tokens(char* output) { // Shunting Yard Algorithm
   Token_t evaluation_stack[PROMPT_SIZE] = {0};
   int evaluation_stack_len = 0;
 
-  // memset(evaluation_string_storage, 0, STRING_STORAGE_SIZE);
   int string_storage_len = 0;
 
   for (int i = 0; i < output_queue_len; i++) {
@@ -503,6 +570,7 @@ void evaluate_tokens(char* output) { // Shunting Yard Algorithm
         Token_t arg = has_arg ? evaluation_stack[--evaluation_stack_len] : (Token_t){0};
         double return_val = 0.0;
         bool is_string_output = false;
+        char string_output[STRING_OUTPUT_LEN] = {0};
         if (tokencmp("exit", *token)) {
           exit((has_arg) ? (int)arg.value : 0);
           return_val = -1;
@@ -530,13 +598,28 @@ void evaluate_tokens(char* output) { // Shunting Yard Algorithm
         } else if (tokencmp("abs", *token)) { return_val = fabs(arg.value);
         } else if (tokencmp("len", *token)) { return_val = arg.str_len;
         } else if (tokencmp("chr", *token) || tokencmp("char", *token)) { is_string_output = true; return_val = arg.value;
+        } else if (tokencmp("basedec", *token)) {
+          is_string_output = true;
+          return_val = 0;
+          base64_decode(arg.str, arg.str_len, string_output); // TODO: make this sized string output safe
+        } else if (tokencmp("baseenc", *token)) {
+          is_string_output = true;
+          return_val = 0;
+          base64_encode(arg.str, arg.str_len, string_output); // TODO: make this sized string output safe
         } else {
           SYNTAX_ERROR("Unknown function or command");
         }
 
         if (is_string_output) {
-          evaluation_string_storage[string_storage_len++] = (char)return_val;
-          evaluation_stack[evaluation_stack_len++] = (Token_t){ .type = TOKEN_STR, .str = &evaluation_string_storage[string_storage_len-1], .str_len = 1 };
+          if (return_val == 0) {
+            int string_len = strlen(string_output);
+            strcpy(&evaluation_string_storage[string_storage_len], string_output);
+            string_storage_len += string_len; 
+            evaluation_stack[evaluation_stack_len++] = (Token_t){ .type = TOKEN_STR, .str = &evaluation_string_storage[string_storage_len-string_len], .str_len = string_len };
+          } else {
+            evaluation_string_storage[string_storage_len++] = (char)return_val;
+            evaluation_stack[evaluation_stack_len++] = (Token_t){ .type = TOKEN_STR, .str = &evaluation_string_storage[string_storage_len-1], .str_len = 1 };
+          }
         } else evaluation_stack[evaluation_stack_len++] = (Token_t){ .type = TOKEN_NUM, .value = return_val };
       } else {
         if (token->type == TOKEN_NEG ||
@@ -717,6 +800,7 @@ void handle_keyboard(char* prompt, char* prompt_history, int current_history_ind
 }
 
 int main() {
+  base64_init();
   char* prompt_storage = (char*)malloc(sizeof(char) * PROMPT_SIZE * PROMPT_HISTORY_SIZE);
   int prompt_storage_index = 0;
 
