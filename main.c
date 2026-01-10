@@ -123,10 +123,10 @@ int nibble_to_int(char nib) {
   return 0;
 }
 
-int hex_to_int(char* hex, int len) {
+double hex_to_f64(char* hex, int len) {
   hex += 2;
   len -= 2;
-  int acc = 0;
+  double acc = 0;
   for (int i = 0; i < len; i++) {
     char c = hex[i];
     acc *= 16;
@@ -135,10 +135,10 @@ int hex_to_int(char* hex, int len) {
   return acc;
 }
 
-int bin_to_int(char* bin, int len) {
+double bin_to_f64(char* bin, int len) {
   bin += 2;
   len -= 2;
-  int acc = 0;
+  double acc = 0;
   for (int i = 0; i < len; i++) {
     char c = bin[i];
     acc *= 2;
@@ -466,10 +466,10 @@ void tokenise(char* str) {
       }
 
       if (current_state == TOKENISER_HEXADECIMAL) {
-        value = (double)hex_to_int(token_begin, token_len);
+        value = hex_to_f64(token_begin, token_len);
         current_token_type = TOKEN_NUM;
       } else if (current_state == TOKENISER_BINARY) {
-        value = (double)bin_to_int(token_begin, token_len);
+        value = bin_to_f64(token_begin, token_len);
         current_token_type = TOKEN_NUM;
       }
 
@@ -596,6 +596,7 @@ void evaluate_tokens(char* output) { // Shunting Yard Algorithm
         } else if (tokencmp("floor", *token)) { return_val = floor(arg.value);
         } else if (tokencmp("ceil", *token)) { return_val = ceil(arg.value);
         } else if (tokencmp("abs", *token)) { return_val = fabs(arg.value);
+        } else if (tokencmp("sqrt", *token)) { return_val = sqrtf(arg.value);
         } else if (tokencmp("len", *token)) { return_val = arg.str_len;
         } else if (tokencmp("chr", *token) || tokencmp("char", *token)) { is_string_output = true; return_val = arg.value;
         } else if (tokencmp("basedec", *token)) {
