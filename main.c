@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+#include <assert.h>
 #include <math.h>
 
 #include <unistd.h>
@@ -456,7 +457,8 @@ void tokenise(char* str) {
           }
         }
 
-        if ((current_token_type == TOKEN_BSL || current_token_type == TOKEN_BSR) &&
+        if ((current_token_type == TOKEN_BSL || current_token_type == TOKEN_BSR ||
+              current_token_type == TOKEN_EQU) &&
             get_char_token_type(nc) == current_token_type)
           eot = false; 
       }
@@ -504,6 +506,7 @@ void tokenise(char* str) {
       double value = 0.0; 
       if (current_token_type == TOKEN_NUM) {
         char buf[PROMPT_SIZE] = {0};
+        assert(token_len < PROMPT_SIZE);
         memcpy(buf, token_begin, token_len);
         value = atof(buf);
       }
@@ -746,7 +749,19 @@ void evaluate_tokens(char* output) { // Shunting Yard Algorithm
     }
   }
 
-  if (evaluation_stack_len != 1) SYNTAX_ERROR("Unfinished expression");
+  if (evaluation_stack_len != 1) {
+    if (evaluation_stack_len < 1) 
+        SYNTAX_ERROR("Unfinished expression");
+
+    for (int i = evaluation_stack_len-1; i >= 0; i--) {
+      if (evaluation_stack[i].type != TOKEN_NUM) 
+        SYNTAX_ERROR("Unfinished expression");
+      
+      if (i > 0) {
+        evaluation_stack[i-1].value = evaluation_stack[i].value * evaluation_stack[i-1].value;
+      }
+    }
+  }
 
   if (debug) {
     printf("\nEVALUATION STACK %d\n", evaluation_stack_len);
