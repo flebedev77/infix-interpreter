@@ -22,7 +22,10 @@
 #define SYNTAX_ERROR(msg) do { \
   fprintf(stderr, "%s:%d SYNTAX ERROR! %s\n\r", __FILE__, __LINE__, msg); \
 } while (0)
+
+#define MIN(a, b) (a < b) ? a : b
 // exit(EXIT_FAILURE); \
+
 
 
 char* base64_chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -34,7 +37,7 @@ void base64_init() {
   }
 }
 
-void base64_encode(const char* input, int input_len, char* buf) { // Highly sophisticated, hyper optimised proprietary base64 encoding algorythm
+void base64_encode(const char* input, int input_len, char* buf) { // Highly sophisticated, hyper optimised proprietary base64 encoding algorithm
   int input_bitlen = input_len * 8;
   char* input_bits = (char*)malloc(input_bitlen); // TODO somehow avoid this dumb malloc
   if (input_bits == NULL) exit(1); 
@@ -232,6 +235,7 @@ enum TokenType {
   TOKEN_LPAREN = 18,
   TOKEN_RPAREN = 19
 };
+enum OutputType output_type = OUTPUT_DEC;
 
 bool is_operator_token(enum TokenType type) {
   if (type >= 4 && type <= TOKEN_COMMAND || type == TOKEN_EQU || type == TOKEN_NEG) return true;
@@ -333,13 +337,52 @@ void print_token(Token_t token) {
 }
 
 void print_help(bool advanced) {
-  printf("Arithmetic expression solver\n");
+  printf("Calculator\n");
   if (advanced) {
-    printf("UNFINISHED\n");
+    printf("Functions: \n");
+    printf("	sin(x) - Evaluates sine with x in degrees\n");
+    printf("	cos(x) - Evaluates cosine with x in degrees\n");
+    printf("	tan(x) - Evaluates tan with x in degrees\n");
+    printf("	atan(x) - Evaluates inverse tan with output in degrees\n");
+    printf("	asin(x) - Evaluates inverse sine with output in degrees\n");
+    printf("	acos(x) - Evaluates inverse cosine with output in degrees\n");
+    printf("	deg(x) - Returns x radians in degrees\n");
+    printf("	rad(x) - Returns x degrees in radians\n");
+    printf("	fah(x) - Returns x centigrade in fahrenheit\n");
+    printf("	cel(x) - Returns x fahrenheit in centigrade\n");
+    printf("	hex(x) - Sets output mode to hexadecimal, which is persistent between prompts unless set otherwise\n");
+    printf("	dec(x) - Sets output mode to decimal, which is persistent between prompts unless set otherwise\n");
+    printf("	bin(x) - Sets output mode to binary, which is persistent between prompts unless set otherwise\n");
+    printf("	chr|char(x) - Sets output mode to string, converting x by ascii which is persistent between prompts unless set otherwise\n");
+    printf("	round(x) - Rounds x to nearest integer\n");
+    printf("	floor(x) - Rounds down x to nearest integer\n");
+    printf("	ceil(x) - Rounds up x to nearest integer\n");
+    printf("	abs(x) - Takes the absolute value of x\n");
+    printf("	sqrt(x) - Takes the square root of x\n");
+    printf("	len(x) - Returns the length of string x (len \"Hello world\" = 11)\n");
+    printf("	baseenc(x) - Encodes string x into base64\n");
+    printf("	basedec(x) - Decodes string x into base64\n");
+    printf("	meter|metre|meters|metres(x) - Converts feet.inches into meters.centimeters (eg meter(6.02) = 2.337)\n");
+    printf("	feet(x) - Converts meters.centimeters into feet.inches (eg feet(2.337) = 6.02)\n");
+    printf("\nOperations: \n");
+    printf("	a * b - Multiples a by b where a and b are real numbers\n");
+    printf("	a / b - Divides a by b where a and b are real numbers\n");
+    printf("	a - b - Subtracts b from a where a and b are real numbers\n");
+    printf("	a + b - Adds b onto a where a and b can be real numbers or strings (both a and b need to be the same type, and adding strings will result in concatenation)\n");
+    printf("	a ^ b - Raises a to b's power where a and b are real numbers (b may be less than one)\n");
+    printf("	a %c b - Returns a mod b. Where a and b are integers (if they are not, they will be cast to integers which will ignore the values after the .)\n", '%');
+    printf("	a << b - Bitshifts integer a left by b (also an integer, if parameters arent integers they will be cast to integers)\n");
+    printf("	a >> b - Bitshifts integer a right by b (also an integer, if parameters arent integers they will be cast to integers)\n");
+    printf("	a = b - Returns 1 if a is equal to b and 0 otherwise\n");
+    printf("	a | b - Runs a bitwise or operation on integers a and b\n");
+    printf("	a & b - Runs a bitwise and operation on integers a and b\n");
+    printf("	a # b - Runs a bitwise xor operation on integers a and b\n");
+    printf("	!a - If a is non-zero, will return 0. Otherwise if equal to zero, will return 1\n");
   } else {
+    printf("  help [advanced - true|false]\n\n");
     printf("(2+3)*3/3-3^2\n");
     printf("There are also some basic functions avaliable\nex\n");
-    printf("hex(2+3)\nbin(2*3)\ndec(0xFF)\n");
+    printf("hex(2+3)\nbin(2*3)\ndec(0xFF)\n\n");
     printf("To exit C-c or type exit\n");
   }
 }
@@ -553,7 +596,7 @@ void evaluate_tokens(char* output) { // Shunting Yard Algorithm
     }
   }
 
-  enum OutputType output_type = OUTPUT_DEC;
+  // enum OutputType output_type = OUTPUT_DEC;
   Token_t evaluation_stack[PROMPT_SIZE] = {0};
   int evaluation_stack_len = 0;
 
@@ -584,7 +627,9 @@ void evaluate_tokens(char* output) { // Shunting Yard Algorithm
         } else if (tokencmp("sin", *token)) { return_val = sin(deg_to_rad(arg.value));
         } else if (tokencmp("cos", *token)) { return_val = cos(deg_to_rad(arg.value));
         } else if (tokencmp("tan", *token)) { return_val = tan(deg_to_rad(arg.value));
-        } else if (tokencmp("atan", *token)) { return_val = atan(deg_to_rad(arg.value));
+        } else if (tokencmp("atan", *token)) { return_val = rad_to_deg(atan(arg.value));
+        } else if (tokencmp("asin", *token)) { return_val = rad_to_deg(asin(arg.value));
+        } else if (tokencmp("acos", *token)) { return_val = rad_to_deg(acos(arg.value));
         } else if (tokencmp("deg", *token)) { return_val = rad_to_deg(arg.value);
         } else if (tokencmp("rad", *token)) { return_val = deg_to_rad(arg.value);
         } else if (tokencmp("fah", *token)) { return_val = cel_to_fah(arg.value);
@@ -607,6 +652,15 @@ void evaluate_tokens(char* output) { // Shunting Yard Algorithm
           is_string_output = true;
           return_val = 0;
           base64_encode(arg.str, arg.str_len, string_output); // TODO: make this sized string output safe
+        } else if (tokencmp("metre", *token) || tokencmp("meter", *token)
+            || tokencmp("meters", *token) || tokencmp("metres", *token)) {
+          double feet = 0;
+          double inches = modf(arg.value, &feet);
+          return_val = feet / 3.281 + inches * 2.54;
+        } else if (tokencmp("feet", *token)) {
+          double feet = arg.value;          
+          double inches = modf(feet, &feet);
+          return_val = feet * 3.281 + inches / 2.54;
         } else {
           SYNTAX_ERROR("Unknown function or command");
         }
@@ -672,6 +726,7 @@ void evaluate_tokens(char* output) { // Shunting Yard Algorithm
         } else if (a.type == TOKEN_STR && b.type == TOKEN_STR) {
           switch (token->type) {
             case TOKEN_ADD:
+              ;
               int str_begin = string_storage_len;
               memcpy(&evaluation_string_storage[string_storage_len], a.str, a.str_len);
               string_storage_len += a.str_len;
@@ -746,8 +801,17 @@ void handle_keyboard(char* prompt, char* prompt_history, int current_history_ind
     }
     if (c == 127 && i > 0) { // Backspace
       // printf("\r\033[%dC", i + 2);
-      prompt[--i] = 0;
-      printf("\033[1D \033[1D");
+      // prompt[--i] = 0;
+      i -= 1;
+      memmove(&prompt[i], &prompt[i+1], strlen(prompt)-i-1);
+      prompt[strlen(prompt)-1] = 0;
+      printf("\033[1D \033[1D\033[0K");
+      for (int j = i; j < strlen(prompt); j++) {
+        putchar(prompt[j]);
+      }
+      for (int j = 0; j < strlen(prompt)-i; j++) {
+        printf("\033[1D");
+      }
       fflush(stdout);
     } else if (c == '\033') {
       char nc[2];
@@ -762,6 +826,7 @@ void handle_keyboard(char* prompt, char* prompt_history, int current_history_ind
             }
             break; //left
           case 'C': 
+            ;
             // TODO replace strlen with a variable
             int prompt_len = strlen(prompt);
             if (i < prompt_len) {
@@ -776,14 +841,18 @@ void handle_keyboard(char* prompt, char* prompt_history, int current_history_ind
             }
             memcpy(prompt, &prompt_history[current_history_index * PROMPT_SIZE], PROMPT_SIZE);
             i = strlen(prompt);
+            editing_middle = false;
             printf("\033[2K\r%s%s", PROMPT_STRING, prompt);
             break; //up
           case 'B':
-            if (current_history_index < initial_history_ind-1) {
+            if (current_history_index < initial_history_ind) {
               current_history_index++;
               memcpy(prompt, &prompt_history[current_history_index * PROMPT_SIZE], PROMPT_SIZE);
               i = strlen(prompt);
+              editing_middle = false;
             } else {
+              // if (current_history_index < initial_history_ind) 
+              //   current_history_index++;
               memset(prompt, 0, PROMPT_SIZE);
             }
             printf("\033[2K\r%s%s", PROMPT_STRING, prompt);
@@ -792,8 +861,19 @@ void handle_keyboard(char* prompt, char* prompt_history, int current_history_ind
         fflush(stdout);
       }
     } else if (!iscntrl(c)) {
-      prompt[i++] = c;
-      putchar(c);
+      if (editing_middle) {
+        memmove(&prompt[i+1], &prompt[i], MIN(PROMPT_SIZE, strlen(prompt)-i));
+        prompt[i++] = c;
+        putchar(c);
+        printf("\033[0K");
+        for (int j = i; j < strlen(prompt); j++) {
+          putchar(prompt[j]);
+        }
+        printf("\033[%dD", (int)(strlen(prompt)-i));
+      } else {
+        prompt[i++] = c;
+        putchar(c);
+      }
       fflush(stdout);
     } 
 
